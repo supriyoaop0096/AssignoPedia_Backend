@@ -2296,137 +2296,113 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       // --- Button logic ---
-      checkinBtn.onclick = async function () {
-        if (checkInRecorded) return;
+      checkinBtn.onclick = function () {
+        if (checkinInput.value) return;
         const time24 = getCurrentTime24();
         const time12 = getCurrentTime12();
-        checkInTime = time12;
-        // Check for late entry (after 11:30)
-        const [h, m] = time24.split(":").map(Number);
-        lateEntry = h > 11 || (h === 11 && m > 30);
-        checkinInput.value = time12 + (lateEntry ? " (L)" : "");
-        // Call backend for check-in
-        const res = await fetch("/api/attendance", {
-          method: "POST",
+        checkinInput.value = time12;
+        // Store in localStorage
+        localStorage.setItem(ATTENDANCE_CHECKIN_KEY, time24);
+        localStorage.setItem(ATTENDANCE_DATE_KEY, getCurrentDateISO());
+        // Enable checkout
+        checkoutBtn.disabled = false;
+        checkoutInput.disabled = false;
+        // Update table
+        addOrUpdateTodayRow({
+          date: getCurrentDateISO(),
+          checkIn: time12,
+          checkOut: checkoutInput.value || '-',
+          status: 'Pending',
+        });
+      };
+
+      checkoutBtn.onclick = function () {
+        if (!checkinInput.value || checkoutInput.value) return;
+        const time24 = getCurrentTime24();
+        const time12 = getCurrentTime12();
+        checkoutInput.value = time12;
+        // Store in localStorage
+        localStorage.setItem(ATTENDANCE_CHECKOUT_KEY, time24);
+        // Enable submit
+        finalSubmitBtn.style.display = '';
+        // Update table
+        addOrUpdateTodayRow({
+          date: getCurrentDateISO(),
+          checkIn: checkinInput.value,
+          checkOut: time12,
+          status: 'Pending',
+        });
+      };
+
+      finalSubmitBtn.onclick = async function () {
+        const checkIn = localStorage.getItem(ATTENDANCE_CHECKIN_KEY);
+        const checkOut = localStorage.getItem(ATTENDANCE_CHECKOUT_KEY);
+        const date = localStorage.getItem(ATTENDANCE_DATE_KEY);
+        if (!checkIn || !checkOut || !date) return;
+        // Call backend with both times
+        const res = await fetch('/api/attendance', {
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             employeeId: employee.employeeId,
-            employeeName: employee.firstName + " " + (employee.lastName || ""),
-            date: getCurrentDateISO(),
-            action: "check-in",
-            time: time24,
+            employeeName: employee.firstName + ' ' + (employee.lastName || ''),
+            date,
+            checkIn,
+            checkOut,
           }),
         });
         const data = await res.json();
         if (data.success) {
-          checkInRecorded = true;
-          checkinBtn.disabled = true;
-          checkinInput.disabled = true;
+          // Clear localStorage
+          localStorage.removeItem(ATTENDANCE_CHECKIN_KEY);
+          localStorage.removeItem(ATTENDANCE_CHECKOUT_KEY);
+          localStorage.removeItem(ATTENDANCE_DATE_KEY);
+          checkinInput.value = '';
+          checkoutInput.value = '';
+          finalSubmitBtn.style.display = 'none';
+          // Reload table
+          loadAttendanceTable();
+          // Show late count and early checkout count
+          lateCountDisplay.textContent = `Late Count (This Month): ${data.lateCount || 0}`;
+          let elCountSpan = document.getElementById("earlyCheckoutCountDisplay");
+          if (!elCountSpan) {
+            elCountSpan = document.createElement("span");
+            elCountSpan.id = "earlyCheckoutCountDisplay";
+            elCountSpan.style = "font-weight:bold;color:#ff9800;margin-left:1.5rem;";
+            lateCountDisplay.parentNode.appendChild(elCountSpan);
+          }
+          elCountSpan.textContent = `Early Checkout (This Month): ${data.earlyCheckoutCount || 0}`;
+        } else {
+          alert(data.message || 'Attendance submit failed');
+        }
+      };
+
+      // On section load, restore state
+      const savedDate = localStorage.getItem(ATTENDANCE_DATE_KEY);
+      const todayISO = getCurrentDateISO();
+      if (savedDate === todayISO) {
+        const savedCheckIn = localStorage.getItem(ATTENDANCE_CHECKIN_KEY);
+        const savedCheckOut = localStorage.getItem(ATTENDANCE_CHECKOUT_KEY);
+        if (savedCheckIn) {
+          checkinInput.value = new Date(todayISO + 'T' + savedCheckIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           checkoutBtn.disabled = false;
           checkoutInput.disabled = false;
-          lateCount = data.lateCount || 0;
-          lateCountDisplay.textContent = `Late Count (This Month): ${lateCount}`;
-          // Add row to table
-          addOrUpdateTodayRow({
-            date: getCurrentDateISO(),
-            checkIn: checkInTime + (lateEntry ? " (L)" : ""),
-            checkOut: "Pending",
-            status: "Pending",
-          });
-        } else {
-          alert(data.message || "Check-in failed");
         }
-      };
-
-      checkoutBtn.onclick = async function () {
-        const token=localStorage.getItem("jwtToken");
-        if (!checkInRecorded || checkOutRecorded) return;
-        const time24 = getCurrentTime24();
-        const time12 = getCurrentTime12();
-        checkOutTime = time12;
-        // Call backend for check-out
-        const res = await fetch("/api/attendance", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            employeeId: employee.employeeId,
-            employeeName: employee.firstName + " " + (employee.lastName || ""),
-            date: getCurrentDateISO(),
-            action: "check-out",
-            time: time24,
-          }),
+        if (savedCheckOut) {
+          checkoutInput.value = new Date(todayISO + 'T' + savedCheckOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          finalSubmitBtn.style.display = '';
+        }
+        // Show in table
+        addOrUpdateTodayRow({
+          date: todayISO,
+          checkIn: checkinInput.value || '-',
+          checkOut: checkoutInput.value || '-',
+          status: 'Pending',
         });
-        const data = await res.json();
-        if (data.success) {
-          checkOutRecorded = true;
-          checkoutBtn.disabled = true;
-          checkoutInput.disabled = true;
-          finalSubmitBtn.style.display = "";
-          // Always ensure the event listener is set
-          if (!finalSubmitBtn._listenerSet) {
-            finalSubmitBtn.addEventListener("click", function () {
-              // Reset all
-              checkInRecorded = false;
-              checkOutRecorded = false;
-              checkInTime = "";
-              checkOutTime = "";
-              lateEntry = false;
-              checkinInput.value = "";
-              checkoutInput.value = "";
-              checkinInput.disabled = false;
-              checkoutInput.disabled = true;
-              checkinBtn.disabled = false;
-              checkoutBtn.disabled = true;
-              finalSubmitBtn.style.display = "none";
-              // Refresh table
-              loadAttendanceTable();
-            });
-            finalSubmitBtn._listenerSet = true;
-          }
-          lateCount = data.lateCount || 0;
-          lateCountDisplay.textContent = `Late Count (This Month): ${lateCount}`;
-          // Early checkout logic
-          let checkOutDisplay = checkOutTime;
-          if (data.earlyCheckout) {
-            checkOutDisplay += " (EL)";
-            // Show early checkout count
-            let elCountSpan = document.getElementById("earlyCheckoutCountDisplay");
-            if (!elCountSpan) {
-              elCountSpan = document.createElement("span");
-              elCountSpan.id = "earlyCheckoutCountDisplay";
-              elCountSpan.style = "font-weight:bold;color:#ff9800;margin-left:1.5rem;";
-              lateCountDisplay.parentNode.appendChild(elCountSpan);
-            }
-            elCountSpan.textContent = `Early Checkout (This Month): ${data.earlyCheckoutCount || 0}`;
-          } else {
-            // Hide early checkout count if not early
-            let elCountSpan = document.getElementById("earlyCheckoutCountDisplay");
-            if (elCountSpan) elCountSpan.textContent = "";
-          }
-          // Update row in table
-          addOrUpdateTodayRow({
-            date: getCurrentDateISO(),
-            checkIn: checkInTime + (lateEntry ? " (L)" : ""),
-            checkOut: checkOutDisplay,
-            status: "Present",
-          });
-        } else {
-          alert(data.message || "Check-out failed");
-        }
-      };
-
-      // Initial state
-      checkinInput.disabled = false;
-      checkoutInput.disabled = true;
-      checkinBtn.disabled = false;
-      checkoutBtn.disabled = true;
-      finalSubmitBtn.style.display = "none";
+      }
 
       // --- Table logic ---
       function addOrUpdateTodayRow({ date, checkIn, checkOut, status }) {
@@ -2460,18 +2436,24 @@ document.addEventListener("DOMContentLoaded", () => {
         tbody.innerHTML = "";
         if (data.success && data.days) {
           data.days.forEach((day) => {
-            let checkOutDisplay = day.checkOut || "-";
-            if (day.earlyCheckout) checkOutDisplay += " (EL)";
+            // Parse check-in/check-out as IST
+            let checkInDisplay = "-";
+            let checkOutDisplay = "-";
+            if (day.checkIn) {
+              // Compose ISO string for the day in IST
+              const checkInDate = new Date(day.date + 'T' + day.checkIn);
+              checkInDisplay = checkInDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
+              if (day.lateEntry) checkInDisplay += " (L)";
+            }
+            if (day.checkOut) {
+              const checkOutDate = new Date(day.date + 'T' + day.checkOut);
+              checkOutDisplay = checkOutDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
+              if (day.earlyCheckout) checkOutDisplay += " (EC)";
+            }
             tbody.innerHTML += `
                 <tr>
                   <td data-label="Date">${day.date}</td>
-                  <td data-label="Check-In">$${
-                    day.attendanceStatus === "Present" &&
-                    day.date === getCurrentDateISO() &&
-                    checkInRecorded
-                      ? checkInTime + (lateEntry ? " (L)" : "")
-                      : "-"
-                  }</td>
+                  <td data-label="Check-In">${checkInDisplay}</td>
                   <td data-label="Check-Out">${checkOutDisplay}</td>
                   <td data-label="Status">${day.attendanceStatus}</td>
                 </tr>
@@ -2701,100 +2683,110 @@ async function loadDashboard() {
   }
   async function updateDashboard(month, year) {
     // Show loading
-    document.getElementById("attendanceCountCard").querySelector(".count").textContent = "...";
-    document.getElementById("paidLeavesCard").querySelector(".count").textContent = "...";
-    document.getElementById("unpaidLeavesCard").querySelector(".count").textContent = "...";
-    document.getElementById("myDashboardAttendanceCalendar").innerHTML = "<div>Loading...</div>";
-    document.getElementById("myDashboardLeavesCalendar").innerHTML = "<div>Loading...</div>";
+    const attendanceCountCard = document.getElementById("attendanceCountCard");
+    const paidLeavesCard = document.getElementById("paidLeavesCard");
+    const unpaidLeavesCard = document.getElementById("unpaidLeavesCard");
+    const attendanceCalendar = document.getElementById("myDashboardAttendanceCalendar");
+    const leavesCalendar = document.getElementById("myDashboardLeavesCalendar");
+    if (attendanceCountCard && attendanceCountCard.querySelector(".count")) attendanceCountCard.querySelector(".count").textContent = "...";
+    if (paidLeavesCard && paidLeavesCard.querySelector(".count")) paidLeavesCard.querySelector(".count").textContent = "...";
+    if (unpaidLeavesCard && unpaidLeavesCard.querySelector(".count")) unpaidLeavesCard.querySelector(".count").textContent = "...";
+    if (attendanceCalendar) attendanceCalendar.innerHTML = "<div>Loading...</div>";
+    if (leavesCalendar) leavesCalendar.innerHTML = "<div>Loading...</div>";
     
     if (showWordCount) {
-    document.getElementById("todayWordCountCard").querySelector(".count").textContent = "...";
-    document.getElementById("monthWordCountCard").querySelector(".count").textContent = "...";
+      const todayWordCountCard = document.getElementById("todayWordCountCard");
+      const monthWordCountCard = document.getElementById("monthWordCountCard");
+      if (todayWordCountCard && todayWordCountCard.querySelector(".count")) todayWordCountCard.querySelector(".count").textContent = "...";
+      if (monthWordCountCard && monthWordCountCard.querySelector(".count")) monthWordCountCard.querySelector(".count").textContent = "...";
     }
     
     // Attendance/leave summary
     const data = await fetchSummary(month, year);
     if (!data || !data.success) {
-      document.getElementById("attendanceCountCard").querySelector(".count").textContent = "-";
-      document.getElementById("paidLeavesCard").querySelector(".count").textContent = "-";
-      document.getElementById("unpaidLeavesCard").querySelector(".count").textContent = "-";
-      document.getElementById("myDashboardAttendanceCalendar").innerHTML = "<div>No data</div>";
-      document.getElementById("myDashboardLeavesCalendar").innerHTML = "<div>No data</div>";
+      if (attendanceCountCard && attendanceCountCard.querySelector(".count")) attendanceCountCard.querySelector(".count").textContent = "-";
+      if (paidLeavesCard && paidLeavesCard.querySelector(".count")) paidLeavesCard.querySelector(".count").textContent = "-";
+      if (unpaidLeavesCard && unpaidLeavesCard.querySelector(".count")) unpaidLeavesCard.querySelector(".count").textContent = "-";
+      if (attendanceCalendar) attendanceCalendar.innerHTML = "<div>No data</div>";
+      if (leavesCalendar) leavesCalendar.innerHTML = "<div>No data</div>";
     } else {
-      document.getElementById("attendanceCountCard").querySelector(".count").textContent =
-        data.attendanceCount;
-      document.getElementById("paidLeavesCard").querySelector(".count").textContent =
-        data.paidLeaves;
-      document.getElementById("unpaidLeavesCard").querySelector(".count").textContent =
-        data.unpaidLeaves;
-      renderAttendanceCalendar("myDashboardAttendanceCalendar", data.days);
-      renderLeavesCalendar("myDashboardLeavesCalendar", data.days);
+      if (attendanceCountCard && attendanceCountCard.querySelector(".count")) attendanceCountCard.querySelector(".count").textContent = data.attendanceCount;
+      if (paidLeavesCard && paidLeavesCard.querySelector(".count")) paidLeavesCard.querySelector(".count").textContent = data.paidLeaves;
+      if (unpaidLeavesCard && unpaidLeavesCard.querySelector(".count")) unpaidLeavesCard.querySelector(".count").textContent = data.unpaidLeaves;
+      if (attendanceCalendar) renderAttendanceCalendar("myDashboardAttendanceCalendar", data.days);
+      if (leavesCalendar) renderLeavesCalendar("myDashboardLeavesCalendar", data.days);
     }
     
     // --- Word Count Data (only for regular employees) ---
     if (showWordCount) {
-    // 1. Fetch word counts for chart
-    const wordCounts = await fetchWordCounts(employee.employeeId, pad(month), year);
-    // Build chart data for all days in month
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const chartLabels = [];
-    const chartData = [];
-    const wordCountMap = {};
-    wordCounts.forEach((wc) => {
-      const d = new Date(wc.date);
-      const key = d.toISOString().slice(0, 10);
-      wordCountMap[key] = wc.wordCount;
-    });
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateObj = new Date(year, month - 1, d);
-      const key = dateObj.toISOString().slice(0, 10);
-      chartLabels.push(dateObj.toLocaleDateString("en-IN", { month: "short", day: "numeric" }));
-      chartData.push(wordCountMap[key] || 0);
-    }
-    // 2. Render chart
-    const perfCtx = document.getElementById("performanceChart").getContext("2d");
-    if (window.performanceChartInstance) window.performanceChartInstance.destroy();
-    window.performanceChartInstance = new Chart(perfCtx, {
-      type: "line",
-      data: {
-        labels: chartLabels,
-        datasets: [
-          {
-            label: "Words Written",
-            data: chartData,
-            borderColor: "#43cea2",
-            backgroundColor: "rgba(67,206,162,0.15)",
-            fill: true,
-            tension: 0.3,
-            pointRadius: 3,
+      // 1. Fetch word counts for chart
+      const wordCounts = await fetchWordCounts(employee.employeeId, pad(month), year);
+      // Build chart data for all days in month
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const chartLabels = [];
+      const chartData = [];
+      const wordCountMap = {};
+      wordCounts.forEach((wc) => {
+        const d = new Date(wc.date);
+        const key = d.toISOString().slice(0, 10);
+        wordCountMap[key] = wc.wordCount;
+      });
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateObj = new Date(year, month - 1, d);
+        const key = dateObj.toISOString().slice(0, 10);
+        chartLabels.push(dateObj.toLocaleDateString("en-IN", { month: "short", day: "numeric" }));
+        chartData.push(wordCountMap[key] || 0);
+      }
+      // 2. Render chart
+      const perfChartElem = document.getElementById("performanceChart");
+      if (perfChartElem && perfChartElem.getContext) {
+        const perfCtx = perfChartElem.getContext("2d");
+        if (window.performanceChartInstance) window.performanceChartInstance.destroy();
+        window.performanceChartInstance = new Chart(perfCtx, {
+          type: "line",
+          data: {
+            labels: chartLabels,
+            datasets: [
+              {
+                label: "Words Written",
+                data: chartData,
+                borderColor: "#43cea2",
+                backgroundColor: "rgba(67,206,162,0.15)",
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3,
+              },
+            ],
           },
-        ],
-      },
-      options: {
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: function (context) {
-                return `Word Count: ${context.parsed.y}`;
+          options: {
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function (context) {
+                    return `Word Count: ${context.parsed.y}`;
+                  },
+                },
               },
             },
+            scales: { y: { beginAtZero: true } },
+            responsive: true,
+            maintainAspectRatio: false,
+            aspectRatio: 2.2,
+            layout: { padding: 0 },
           },
-        },
-        scales: { y: { beginAtZero: true } },
-        responsive: true,
-        maintainAspectRatio: false,
-        aspectRatio: 2.2,
-        layout: { padding: 0 },
-      },
-    });
-    // 3. Today's word count
-    const todayWordCount = await fetchTodayWordCount(employee.employeeId);
-    document.getElementById("todayWordCountCard").querySelector(".count").textContent =
-      todayWordCount;
-    // 4. Month total word count
-    const monthTotal = chartData.reduce((sum, v) => sum + v, 0);
-    document.getElementById("monthWordCountCard").querySelector(".count").textContent = monthTotal;
+        });
+      }
+      // 3. Today's word count
+      const todayWordCount = await fetchTodayWordCount(employee.employeeId);
+      const todayWordCountCard = document.getElementById("todayWordCountCard");
+      if (todayWordCountCard && todayWordCountCard.querySelector(".count"))
+        todayWordCountCard.querySelector(".count").textContent = todayWordCount;
+      // 4. Month total word count
+      const monthTotal = chartData.reduce((sum, v) => sum + v, 0);
+      const monthWordCountCard = document.getElementById("monthWordCountCard");
+      if (monthWordCountCard && monthWordCountCard.querySelector(".count"))
+        monthWordCountCard.querySelector(".count").textContent = monthTotal;
     }
   }
   // --- Calendar rendering ---
@@ -5653,10 +5645,9 @@ async function fetchAndUpdateLeaveApprovalBadge() {
     const res = await fetch('/api/leave-unread-count', {
       headers: { Authorization: `Bearer ${token}` }
     });
+    if (!res.ok) return;
     const data = await res.json();
-    if (data.success) {
-      updateLeaveApprovalBadge(data.unreadCount);
-    }
+    updateLeaveApprovalBadge(data.count || 0);
   } catch (err) {
     // Silent fail
   }
@@ -5676,3 +5667,18 @@ window.rejectLeaveRequest = async function(id) {
   await origRejectLeaveRequest(id);
   fetchAndUpdateLeaveApprovalBadge();
 };
+
+// Attendance localStorage keys (define at the very top)
+const ATTENDANCE_CHECKIN_KEY = 'attendanceCheckInTime';
+const ATTENDANCE_CHECKOUT_KEY = 'attendanceCheckOutTime';
+const ATTENDANCE_DATE_KEY = 'attendanceDate';
+// ... existing code ...
+// Wherever fetchAndUpdateLeaveApprovalBadge is called (e.g., after login or on page load):
+const token = localStorage.getItem('jwtToken');
+if (token) {
+  const payload = JSON.parse(atob(token.split('.')[1]));
+  if (payload.role === 'admin' || payload.role === 'hr') {
+    fetchAndUpdateLeaveApprovalBadge();
+  }
+}
+// ... existing code ...

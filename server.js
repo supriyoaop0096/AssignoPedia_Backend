@@ -23,6 +23,7 @@ app.use(
 );
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
+app.set('trust proxy', true); // Trust the x-forwarded-for header for real client IP
 
 // ✅ MongoDB Connection
 const conn = mongoose.createConnection(process.env.MONGODB_URI, {
@@ -312,19 +313,22 @@ const allowedIPs = [
 "223.185.35.96",
 
 "49.37.8.149",
+
   // Add more as needed
 ];
 
 // Middleware to restrict by IP for attendance
 function restrictAttendanceByIP(req, res, next) {
   // Get IP from x-forwarded-for or req.ip
-  let ip = req.headers["x-forwarded-for"] || req.connection.remoteAddress || req.ip;
-  console.log("Client IP:", ip);
-  if (Array.isArray(ip)) ip = ip[0];
-  if (ip && ip.includes(",")) ip = ip.split(",")[0];
-  // Remove IPv6 prefix if present
+  let ip = req.headers["x-forwarded-for"];
+  if (ip) {
+    // x-forwarded-for can be a comma-separated list, take the first one
+    ip = ip.split(",")[0].trim();
+  } else {
+    ip = req.ip;
+  }
   if (ip && ip.startsWith("::ffff:")) ip = ip.replace("::ffff:", "");
-  // Check against allowed list
+  console.log("RestrictAttendanceByIP - Client IP:", ip, "(allowed:", allowedIPs.includes(ip), ")");
   if (!allowedIPs.includes(ip)) {
     return res.status(403).json({
       success: false,
@@ -364,6 +368,12 @@ async function sendNoticeEmail({ to, subject, text }) {
   } catch (err) {
     console.error("Error sending email:", err);
   }
+}
+
+// Helper to get IST date
+function getISTDate(date = new Date()) {
+  // IST is UTC+5:30
+  return new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
 }
 
 // ✅ Routes
@@ -848,7 +858,7 @@ app.patch(
         return res.status(404).json({ success: false, message: "Leave request not found" });
 
       leave.status = "Approved";
-      leave.approvedAt = new Date();
+      leave.approvedAt = getISTDate();
       await leave.save();
       res.json({ success: true, message: "Leave request approved" });
     } catch (err) {
@@ -867,7 +877,7 @@ app.patch(
         return res.status(404).json({ success: false, message: "Leave request not found" });
 
       leave.status = "Rejected";
-      leave.approvedAt = new Date();
+      leave.approvedAt = getISTDate();
       await leave.save();
       res.json({ success: true, message: "Leave request rejected" });
     } catch (err) {
@@ -941,111 +951,36 @@ app.post("/api/pay-slip", authenticateToken, requireHRorAdmin, async (req, res) 
 // API: Mark attendance (check-in/check-out, late entry, late count)
 app.post("/api/attendance", authenticateToken, restrictAttendanceByIP, async (req, res) => {
   try {
-    const { employeeId, employeeName, date, action, time } = req.body;
-    if (!employeeId || !date || !action || !time) {
-      return res
-        .status(400)
-        .json({ success: false, message: "employeeId, date, action, and time are required." });
+    const { employeeId, employeeName, date, checkIn, checkOut } = req.body;
+    if (!employeeId || !date || !checkIn || !checkOut) {
+      return res.status(400).json({ success: false, message: "employeeId, date, checkIn, and checkOut are required." });
     }
     const attendanceDate = new Date(date);
+    const [hIn, mIn] = checkIn.split(":").map(Number);
+    let lateEntry = hIn > 11 || (hIn === 11 && mIn > 30);
+    const [hOut, mOut] = checkOut.split(":").map(Number);
+    let earlyCheckout = hOut < 18;
+    // Save attendance
     let att = await Attendance.findOne({ employeeId, date: attendanceDate });
-    if (action === "check-in") {
-      // Use server time for check-in
-      const now = new Date();
-      const attendanceDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const time = now.toTimeString().slice(0, 5); // HH:mm
-      if (att && att.checkIn) {
-        return res.status(400).json({ success: false, message: "Already checked in for today." });
-      }
-      // Determine if late entry (after 11:30 AM)
-      const [h, m] = time.split(":");
-      const hour = parseInt(h, 10);
-      const minute = parseInt(m, 10);
-      let lateEntry = false;
-      if (hour > 11 || (hour === 11 && minute > 30)) {
-        lateEntry = true;
-      }
-      // Calculate late count for this month
-      const month = attendanceDate.getMonth();
-      const year = attendanceDate.getFullYear();
-      const monthStart = new Date(year, month, 1);
-      const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
-      let lateCount = 0;
-      if (lateEntry) {
-        lateCount = await Attendance.countDocuments({
-          employeeId,
-          date: { $gte: monthStart, $lte: monthEnd },
-          lateEntry: true,
-        });
-        lateCount += 1;
-      } else if (att && att.lateEntry) {
-        lateCount = att.lateCount;
-      }
-      att = await Attendance.findOneAndUpdate(
-        { employeeId, date: attendanceDate },
-        {
-          $set: {
-            employeeName,
-            status: "Present",
-            checkIn: time,
-            lateEntry,
-            lateCount: lateEntry ? lateCount : 0,
-          },
-        },
-        { upsert: true, new: true }
-      );
-      return res.json({ success: true, attendance: att, lateCount });
-    } else if (action === "check-out") {
-      // Use server time for check-out
-      const now = new Date();
-      const attendanceDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const time = now.toTimeString().slice(0, 5); // HH:mm
-      let att = await Attendance.findOne({ employeeId, date: attendanceDate });
-      if (!att || !att.checkIn) {
-        return res.status(400).json({ success: false, message: "Check-in required before check-out." });
-      }
-      // Early check-out logic: if check-out before 18:00, mark as early checkout
-      let earlyCheckout = false;
-      const [h, m] = time.split(":");
-      const hour = parseInt(h, 10);
-      const minute = parseInt(m, 10);
-      if (hour < 18) {
-        earlyCheckout = true;
-      }
-      // Calculate early checkout count for this month
-      const month = attendanceDate.getMonth();
-      const year = attendanceDate.getFullYear();
-      const monthStart = new Date(year, month, 1);
-      const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
-      let earlyCheckoutCount = 0;
-      if (earlyCheckout) {
-        earlyCheckoutCount = await Attendance.countDocuments({
-          employeeId,
-          date: { $gte: monthStart, $lte: monthEnd },
-          earlyCheckout: true,
-        });
-        earlyCheckoutCount += 1;
-      } else if (att && att.earlyCheckout) {
-        earlyCheckoutCount = att.earlyCheckoutCount;
-      }
-      att = await Attendance.findOneAndUpdate(
-        { employeeId, date: attendanceDate },
-        { $set: { checkOut: time, earlyCheckout, earlyCheckoutCount } },
-        { new: true }
-      );
-      // Get late count for the month
-      const lateCount = await Attendance.countDocuments({
-        employeeId,
-        date: { $gte: monthStart, $lte: monthEnd },
-        lateEntry: true,
-      });
-      return res.json({ success: true, attendance: att, lateCount, earlyCheckout, earlyCheckoutCount });
-    } else {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid action. Use 'check-in' or 'check-out'." });
+    if (!att) {
+      att = new Attendance({ employeeId, employeeName, date: attendanceDate });
     }
-  } catch (err) {
+    att.checkIn = checkIn;
+    att.checkOut = checkOut;
+    att.lateEntry = lateEntry;
+    att.earlyCheckout = earlyCheckout;
+    att.status = "Present";
+    await att.save();
+    // Calculate late count and early checkout count for the month
+    const month = attendanceDate.getMonth();
+    const year = attendanceDate.getFullYear();
+    const monthStart = new Date(year, month, 1);
+    const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
+    const lateCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lte: monthEnd }, lateEntry: true });
+    const earlyCheckoutCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lte: monthEnd }, earlyCheckout: true });
+    return res.json({ success: true, lateEntry, earlyCheckout, lateCount, earlyCheckoutCount });
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -1132,7 +1067,7 @@ app.get("/api/attendance-summary", authenticateToken, async (req, res) => {
       const key = new Date(y, m, d).toISOString().slice(0, 10);
       // Check if there is a present attendance record for this date
       const presentRecord = allAttendance.find(a => a.date.toISOString().slice(0, 10) === key && a.status === 'Present');
-      console.log("presentRecord",presentRecord);
+      //console.log("presentRecord",presentRecord);
       days.push({
         date: key,
         attendanceStatus: presentRecord ? 'Present' : 'Absent',
@@ -1211,7 +1146,7 @@ app.get("/api/word-count/today", authenticateToken, async (req, res) => {
     if (!employeeId) {
       return res.status(400).json({ success: false, message: "employeeId is required." });
     }
-    const today = new Date();
+    const today = getISTDate();
     const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const end = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
     const wordCount = await WordCount.findOne({
@@ -1442,8 +1377,7 @@ app.post("/api/wfh-request", authenticateToken, wfhAttachmentUpload.single("atta
     // Validate dates
     const from = new Date(fromDate);
     const to = new Date(toDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = getISTDate();
 
     if (from < today) {
       return res.status(400).json({ 
@@ -1629,7 +1563,7 @@ app.patch("/api/wfh-requests/:id/status", authenticateToken, requireHRorAdmin, a
     // Update status
     wfhRequest.status = status;
     wfhRequest.approvedBy = approverId;
-    wfhRequest.approvedAt = new Date();
+    wfhRequest.approvedAt = getISTDate();
     wfhRequest.comments = comments || wfhRequest.comments;
 
     await wfhRequest.save();
