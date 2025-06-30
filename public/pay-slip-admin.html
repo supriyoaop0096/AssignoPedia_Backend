@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/css/dashboard.css">
+    <title>Pay Slip Admin</title>
+    <style>
+      body {
+        background: linear-gradient(135deg, #a788f5, #b1c4ff);
+        margin: 0;
+        font-family: "Segoe UI", sans-serif;
+      }
+
+      
+
+      .pay-slip-container h2 {
+        font-size: 22px;
+        margin-bottom: 20px;
+        color: #000;
+      }
+
+      .form-group {
+        margin-bottom: 15px;
+      }
+
+      .form-group label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 5px;
+      }
+
+      .form-group input,
+      .form-group select {
+        width: 100%;
+        padding: 10px 12px;
+        border: none;
+        border-radius: 10px;
+        background: #f4f4fc;
+        outline: none;
+        font-size: 15px;
+      }
+
+      hr {
+        margin: 25px 0;
+        border: 0;
+        border-top: 1px solid #b3a9e4;
+      }
+
+      .button-group {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 20px;
+      }
+
+      .cancel-btn,
+      .generate-btn {
+        padding: 10px 20px;
+        font-weight: bold;
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+
+      .cancel-btn {
+        background-color: #f3eaff;
+        color: #7a42f4;
+      }
+
+      .generate-btn {
+        background: linear-gradient(90deg, #6f42c1, #4dd0a9);
+        color: white;
+      }
+
+      .form-group input[readonly] {
+        background-color: #e4e4fa;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="pay-slip-container">
+      <h2>Pay Slip Generation</h2>
+
+      <div class="form-group">
+        <label for="empId">Employee ID</label>
+        <input type="text" id="empId" placeholder="Enter Employee ID" />
+      </div>
+
+      <div class="form-group">
+        <label for="month">Month</label>
+        <select id="month">
+          <option>Select Month</option>
+          <option>January</option>
+          <option>February</option>
+          <option>March</option>
+          <option>April</option>
+          <option>May</option>
+          <option>June</option>
+          <option>July</option>
+          <option>August</option>
+          <option>September</option>
+          <option>October</option>
+          <option>November</option>
+          <option>December</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="year">Year</label>
+        <input type="text" id="year" placeholder="Enter Year" />
+      </div>
+
+      <hr />
+
+      <div class="form-group">
+        <label for="basic">Basic Salary</label>
+        <input type="number" id="basic" placeholder="Enter Basic Salary" />
+      </div>
+
+      <div class="form-group">
+        <label for="hra">HRA</label>
+        <input type="number" id="hra" placeholder="Enter HRA" />
+      </div>
+
+      <div class="form-group">
+        <label for="allowance">Special Allowance</label>
+        <input type="number" id="allowance" placeholder="Enter Special Allowance" />
+      </div>
+
+      <div class="form-group">
+        <label for="deductions">Deductions</label>
+        <input type="number" id="deductions" placeholder="Enter Deductions" />
+      </div>
+
+      <div class="form-group">
+        <label for="netSalary">Net Salary</label>
+        <input type="text" id="netSalary" placeholder="Net Salary" readonly />
+      </div>
+
+      <div class="button-group">
+        <button class="cancel-btn" onclick="clearForm()">Cancel</button>
+        <button class="generate-btn" onclick="generatePaySlip()">Generate Pay Slip</button>
+      </div>
+    </div>
+
+    <script>
+      const inputs = ["basic", "hra", "allowance", "deductions"];
+      inputs.forEach((id) => {
+        document.getElementById(id).addEventListener("input", calculateNet);
+      });
+
+      function calculateNet() {
+        const basic = parseFloat(document.getElementById("basic").value) || 0;
+        const hra = parseFloat(document.getElementById("hra").value) || 0;
+        const allowance = parseFloat(document.getElementById("allowance").value) || 0;
+        const deductions = parseFloat(document.getElementById("deductions").value) || 0;
+        const net = basic + hra + allowance - deductions;
+        document.getElementById("netSalary").value = net.toFixed(2);
+      }
+
+      function clearForm() {
+        document.querySelectorAll("input, select").forEach((el) => (el.value = ""));
+      }
+
+      function generatePaySlip() {
+        alert("Pay Slip Generated (functionality to export PDF can be added)");
+      }
+    </script>
+  </body>
+</html>
+<!-- Compare this snippet from AOP/fwdwebsiteofassignopedia/dashboard%281%29.html: -->

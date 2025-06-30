@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard | Assignopedia</title>
+  <link rel="icon" type="image/png" href="/images/logo.png" />
+  <link rel="stylesheet" href="/css/dashboard.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <!-- Hamburger Menu -->
+  <div class="hamburger-icon" id="hamburgerToggle">
+    <i class="fas fa-bars"></i>
+  </div>
+
+  <div class="dashboard-container">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <h2>Employee Panel</h2>
+      </div>
+      <nav class="sidebar-nav">
+       
+        <button class="sidebar-btn" id="btn-dashboard"><i class="fas fa-home"></i> My Dashboard</button>
+        <button class="sidebar-btn" id="btn-leave"><i class="fas fa-plane-departure"></i> Leave Request</button>
+        <button class="sidebar-btn" id="btn-social" style="display:none;"><i class="fas fa-share-alt"></i> Social Media</button>
+        <button class="sidebar-btn" id="btn-add-employee" style="display:none;"><i class="fas fa-user-plus"></i> Add Employee</button>
+        <button class="sidebar-btn" id="btn-manage-employee" style="display:none;"><i class="fas fa-user-edit"></i> Manage Employee Account</button>
+        <button class="sidebar-btn" id="btn-stats" style="display:none;"><i class="fas fa-chart-bar"></i> Employee Stats</button>
+        <button class="sidebar-btn" id="btn-pay-slip"><i class="fas fa-file-invoice"></i> Pay Slip Admin</button>
+        <button class="sidebar-btn" id="btn-attendance"><i class="fas fa-user-check"></i> My Attendance</button>
+         <button class="sidebar-btn" id="btn-notice-board"><i class="fas fa-bell"></i> Notice Board</button>
+        <button class="sidebar-btn" id="btn-notifications"><i class="fas fa-bell"></i> Notifications <span id="notificationBadge" class="notification-badge" style="display:none;"></span></button>
+        <button class="sidebar-btn" id="btn-wfh"><i class="fas fa-laptop-house"></i> WFH Request</button>
+        <button class="sidebar-btn" id="btn-wfh-approval"><i class="fas fa-user-check"></i> WFH Approval</button>
+      </nav>
+      <div class="logout-sidebar">
+        <button class="logout-btn" id="logoutBtn">Logout</button>
+      </div>
+    </aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Main Content -->
+    <main class="main-content" id="mainContent">
+      <!-- Dynamic content from dashboard.js will be injected here -->
+    </main>
+  </div>
+
+  <script type="module" src="/js/dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard - Assignopedia</title>
+    <link rel="stylesheet" href="/css/dashboard.css" />
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="admin-panel-section">
+      <div class="hamburger-icon" id="hamburgerToggle">
+  <i class="fas fa-bars"></i>
+</div>
+
+      <div class="dashboard-wrapper">
+        <!-- Sidebar -->
+        <div class="sidebar">
+          <div class="sidebar-title">Employee Panel</div>
+          <button class="sidebar-btn" id="btn-leave">Leave Request</button>
+          <button class="sidebar-btn" id="btn-social" style="display: none">Social Media</button>
+          <button class="sidebar-btn" id="btn-add-employee" style="display: none">
+            Add Employee
+          </button>
+          <button class="sidebar-btn" id="btn-stats" style="display: none">Employee Stats</button>
+          <button class="sidebar-btn" id="btn-pay-slip">Pay Slip Admin</button>
+          <button class="sidebar-btn" id="btn-attendance">My Attendance</button>
+          <!-- Leave Approval will be injected by JS for Admin/HR roles -->
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content" id="mainContent">
+          <!-- Logout button (loaded dynamically too in JS) -->
+          <div class="logout-container">
+            <button class="logout-btn" id="logoutBtn">Logout</button>
+          </div>
+          <!-- Dynamic Content Will Be Injected Here by dashboard.js -->
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="js/dashboard.js"></script>
+  </body>
+</html>

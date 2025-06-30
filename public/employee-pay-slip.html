@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Pay Slips - Assignopedia</title>
+    <link rel="stylesheet" href="/css/dashboard.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .pay-slip-container {
+            max-width: 1000px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .pay-slip-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .pay-slip-filters {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .filter-group select {
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .pay-slip-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .pay-slip-table th,
+        .pay-slip-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .pay-slip-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+
+        .pay-slip-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .view-btn {
+            padding: 0.5rem 1rem;
+            background: #4f3ca7;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .view-btn:hover {
+            background: #3a2c7d;
+        }
+
+        .download-btn {
+            padding: 0.5rem 1rem;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-left: 0.5rem;
+        }
+
+        .download-btn:hover {
+            background: #218838;
+        }
+
+        .no-pay-slips {
+            text-align: center;
+            padding: 2rem;
+            color: #6c757d;
+        }
+
+        .pay-slip-details {
+            display: none;
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .pay-slip-details.show {
+            display: block;
+        }
+
+        .details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .detail-item {
+            background: white;
+            padding: 1rem;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .detail-item h4 {
+            margin: 0 0 0.5rem 0;
+            color: #6c757d;
+        }
+
+        .detail-item p {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="pay-slip-container">
+        <div class="pay-slip-header">
+            <h2>My Pay Slips</h2>
+            <button class="view-btn" onclick="window.location.href='employee-dashboard.html'">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </button>
+        </div>
+
+        <div class="pay-slip-filters">
+            <div class="filter-group">
+                <label for="yearFilter">Year:</label>
+                <select id="yearFilter" onchange="filterPaySlips()">
+                    <option value="">All Years</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="monthFilter">Month:</label>
+                <select id="monthFilter" onchange="filterPaySlips()">
+                    <option value="">All Months</option>
+                    <option value="01">January</option>
+                    <option value="02">February</option>
+                    <option value="03">March</option>
+                    <option value="04">April</option>
+                    <option value="05">May</option>
+                    <option value="06">June</option>
+                    <option value="07">July</option>
+                    <option value="08">August</option>
+                    <option value="09">September</option>
+                    <option value="10">October</option>
+                    <option value="11">November</option>
+                    <option value="12">December</option>
+                </select>
+            </div>
+        </div>
+
+        <table class="pay-slip-table">
+            <thead>
+                <tr>
+                    <th>Month</th>
+                    <th>Year</th>
+                    <th>Basic Salary</th>
+                    <th>Allowances</th>
+                    <th>Deductions</th>
+                    <th>Net Salary</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="paySlipsTableBody">
+                <!-- Pay slips will be populated here -->
+            </tbody>
+        </table>
+
+        <div id="noPaySlips" class="no-pay-slips" style="display: none;">
+            <i class="fas fa-file-invoice" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+            <h3>No Pay Slips Found</h3>
+            <p>You don't have any pay slips for the selected period.</p>
+        </div>
+    </div>
+
+    <script>
+        // Populate year filter with last 5 years
+        const yearFilter = document.getElementById('yearFilter');
+        const currentYear = new Date().getFullYear();
+        for (let year = currentYear; year >= currentYear - 4; year--) {
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            yearFilter.appendChild(option);
+        }
+
+        async function loadPaySlips() {
+            try {
+                const token = localStorage.getItem('jwtToken');
+                if (!token) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+
+                const response = await fetch('api/employee/pay-slips', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+                const tbody = document.getElementById('paySlipsTableBody');
+                const noPaySlips = document.getElementById('noPaySlips');
+
+                if (data.paySlips && data.paySlips.length > 0) {
+                    tbody.innerHTML = '';
+                    data.paySlips.forEach(slip => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${getMonthName(slip.month)}</td>
+                            <td>${slip.year}</td>
+                            <td>₹${slip.basicSalary.toLocaleString()}</td>
+                            <td>₹${slip.allowances.toLocaleString()}</td>
+                            <td>₹${slip.deductions.toLocaleString()}</td>
+                            <td>₹${slip.netSalary.toLocaleString()}</td>
+                            <td>
+                                <span style="padding: 0.25rem 0.5rem; border-radius: 4px; background: #d4edda; color: #155724;">
+                                    ${slip.status}
+                                </span>
+                            </td>
+                            <td>
+                                <button class="view-btn" onclick="viewPaySlip('${slip._id}')">
+                                    <i class="fas fa-eye"></i> View
+                                </button>
+                                <button class="download-btn" onclick="downloadPaySlip('${slip._id}')">
+                                    <i class="fas fa-download"></i> Download
+                                </button>
+                            </td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                    noPaySlips.style.display = 'none';
+                } else {
+                    tbody.innerHTML = '';
+                    noPaySlips.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error loading pay slips:', error);
+                alert('Error loading pay slips. Please try again later.');
+            }
+        }
+
+        function getMonthName(month) {
+            const months = [
+                'January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'
+            ];
+            return months[parseInt(month) - 1];
+        }
+
+        function filterPaySlips() {
+            const year = document.getElementById('yearFilter').value;
+            const month = document.getElementById('monthFilter').value;
+            
+            // Add your filtering logic here
+            // For now, we'll just reload all pay slips
+            loadPaySlips();
+        }
+
+        async function viewPaySlip(id) {
+            try {
+                const token = localStorage.getItem('jwtToken');
+                const response = await fetch(`http://localhost:5000/api/employee/pay-slips/${id}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    // Show pay slip details in a modal or expand the row
+                    alert('Pay slip details will be shown here');
+                } else {
+                    alert(data.message || 'Error viewing pay slip');
+                }
+            } catch (error) {
+                console.error('Error viewing pay slip:', error);
+                alert('Error viewing pay slip. Please try again later.');
+            }
+        }
+
+        async function downloadPaySlip(id) {
+            try {
+                const token = localStorage.getItem('jwtToken');
+                const response = await fetch(`http://localhost:5000/api/employee/pay-slips/${id}/download`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `pay-slip-${id}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    a.remove();
+                } else {
+                    const data = await response.json();
+                    alert(data.message || 'Error downloading pay slip');
+                }
+            } catch (error) {
+                console.error('Error downloading pay slip:', error);
+                alert('Error downloading pay slip. Please try again later.');
+            }
+        }
+
+        // Load pay slips when the page loads
+        document.addEventListener('DOMContentLoaded', loadPaySlips);
+    </script>
+</body>
+</html> 

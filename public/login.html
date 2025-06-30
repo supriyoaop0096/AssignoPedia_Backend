@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Employee Login - Assignopedia</title>
+  <link rel="stylesheet" href="css/login.css" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/login.css" />
+</head>
+<body>
+  <div class="login-container">
+    <form class="login-form" id="employeeLoginForm">
+      <h2 class="login-title">Employee Login</h2>
+      <div class="input-group">
+        <label for="employeeId">Employee ID</label>
+        <input type="text" id="employeeId" name="employeeId" placeholder="Enter your Employee ID" required />
+      </div>
+      <div class="input-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" placeholder="Enter your Password" required />
+      </div>
+      <button type="submit" class="login-btn">Login</button>
+      <button type="button" class="forgot-btn" onclick="window.location.href='forgot-password.html'">Forgot Password?</button>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById('employeeLoginForm');
+    const loginBtn = form.querySelector('.login-btn');
+    const spinner = document.createElement('span');
+    spinner.className = 'fa fa-spinner fa-spin';
+    spinner.style.marginLeft = '10px';
+    let messageDiv = null;
+
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      if (!messageDiv) {
+        messageDiv = document.createElement('div');
+        messageDiv.style.margin = '1rem 0';
+        messageDiv.style.textAlign = 'center';
+        form.appendChild(messageDiv);
+      }
+      messageDiv.textContent = '';
+      loginBtn.disabled = true;
+      loginBtn.appendChild(spinner);
+
+      const employeeId = form.employeeId.value.trim();
+      const password = form.password.value;
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({ employeeId, password })
+        });
+
+        const data = await res.json();
+       //await console.log(data);
+        if (data.success) {
+          // Store token and user data
+          console.log(data.token);
+          const token = res.headers.get('Authorization')?.split(' ')[1] || data.token;
+          console.log(token);
+          localStorage.setItem('jwtToken', token);
+          localStorage.setItem('employee', JSON.stringify(data.employee));
+          
+          messageDiv.style.color = '#4f3ca7';
+          messageDiv.textContent = 'Login successful! Redirecting...';
+          
+          // Redirect after successful login
+          setTimeout(() => {
+            console.log("Token->",localStorage.getItem('jwtToken'));
+            window.location.href = 'dashboard.html';
+          }, 1200);
+        } else {
+          messageDiv.style.color = '#e74c3c';
+          messageDiv.textContent = data.message || 'Login failed.';
+        }
+      } catch (err) {
+        console.error('Login error:', err);
+        messageDiv.style.color = '#e74c3c';
+        messageDiv.textContent = 'Server error. Please try again later.';
+      } finally {
+        loginBtn.disabled = false;
+        if (loginBtn.contains(spinner)) loginBtn.removeChild(spinner);
+      }
+    });
+  </script>
+</body>
+</html>
