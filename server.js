@@ -955,7 +955,9 @@ app.post("/api/attendance", authenticateToken, restrictAttendanceByIP, async (re
     if (!employeeId || !date || !checkIn || !checkOut) {
       return res.status(400).json({ success: false, message: "employeeId, date, checkIn, and checkOut are required." });
     }
-    const attendanceDate = new Date(date);
+    // Always use IST for attendance date
+    const istNow = getISTDate(new Date());
+    const attendanceDate = new Date(istNow.getFullYear(), istNow.getMonth(), istNow.getDate());
     const [hIn, mIn] = checkIn.split(":").map(Number);
     let lateEntry = hIn > 11 || (hIn === 11 && mIn > 30);
     const [hOut, mOut] = checkOut.split(":").map(Number);
@@ -1104,8 +1106,11 @@ app.post("/api/word-count", authenticateToken, requireHRorAdmin, async (req, res
         .status(400)
         .json({ success: false, message: "employeeId, date, and wordCount are required." });
     }
-    // Upsert: update if exists, else create
+    // When storing word count, if date is today, use IST day
+    const wordDate = date ? new Date(date) : getISTDate();
+    const wordDateIST = new Date(wordDate.getFullYear(), wordDate.getMonth(), wordDate.getDate());
     const doc = await WordCount.findOneAndUpdate(
+      { employeeId, date: wordDateIST },
       { employeeId, date: new Date(date) },
       { $set: { wordCount, createdBy: req.user.employeeId } },
       { upsert: true, new: true }
