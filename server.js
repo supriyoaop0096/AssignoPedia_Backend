@@ -109,6 +109,7 @@ const employeeSchema = new mongoose.Schema(
       fileId: mongoose.Schema.Types.ObjectId,
       filename: String,
     },
+    allowMobileAttendance: { type: Boolean, default: false },
   },
   { collection: "Employee Details", timestamps: true }
 );
@@ -116,6 +117,18 @@ const employeeSchema = new mongoose.Schema(
 employeeSchema.index({ employeeId: 1 }, { unique: true });
 
 const Employee = conn.model("Employee", employeeSchema);
+
+// One-time script to set allowMobileAttendance: true for all employees
+// Uncomment and run once, then remove or comment again
+
+/*Employee.updateMany({}, { $set: { allowMobileAttendance: true } })
+  .then(result => {
+    console.log('Updated allowMobileAttendance for all employees:', result.modifiedCount);
+  })
+  .catch(err => {
+    console.error('Error updating allowMobileAttendance:', err);
+  });
+*/
 
 // --- Update LeaveRequest schema to support attachment ---
 const leaveRequestSchema = new mongoose.Schema(
@@ -301,26 +314,37 @@ const allowedIPs = [
   // Add more as needed
 ];
 
-// Middleware to restrict by IP for attendance
-function restrictAttendanceByIP(req, res, next) {
-  // Get IP from x-forwarded-for or req.ip
-  let ip = req.headers["x-forwarded-for"];
-  if (ip) {
-    // x-forwarded-for can be a comma-separated list, take the first one
-    ip = ip.split(",")[0].trim();
-  } else {
-    ip = req.ip;
+// Middleware to restrict by allowMobileAttendance only (IP check commented out)
+async function restrictAttendanceByIP(req, res, next) {
+  // req.user is set by authenticateToken
+  if (req.user && req.user.employeeId) {
+    // Fetch employee from DB to get allowMobileAttendance
+    const employee = await Employee.findOne({ employeeId: req.user.employeeId });
+    if (employee && employee.allowMobileAttendance) {
+      return next(); // Allow from any IP
+    } else {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: Mobile attendance not allowed for this user.",
+      });
+    }
   }
-  if (ip && ip.startsWith("::ffff:")) ip = ip.replace("::ffff:", "");
-  console.log("RestrictAttendanceByIP - Client IP:", ip, "(allowed:", allowedIPs.includes(ip), ")");
-  if (!allowedIPs.includes(ip)) {
-    return res.status(403).json({
-      success: false,
-      message: "Access denied: Not a company device (IP not allowed)",
-      ip,
-    });
-  }
-  next();
+  // --- IP check code commented out ---
+  // let ip = req.headers["x-forwarded-for"];
+  // if (ip) {
+  //   ip = ip.split(",")[0].trim();
+  // } else {
+  //   ip = req.ip;
+  // }
+  // if (ip && ip.startsWith("::ffff:")) ip = ip.replace("::ffff:", "");
+  // if (!allowedIPs.includes(ip)) {
+  //   return res.status(403).json({
+  //     success: false,
+  //     message: "Access denied: Not a company device (IP not allowed)",
+  //     ip,
+  //   });
+  // }
+  // next();
 }
 
 // Nodemailer transporter setup (use your SMTP config or Gmail for demo)
@@ -365,6 +389,8 @@ function getISTDate(date = new Date()) {
 // Login
 app.post("/api/login", async (req, res) => {
   try {
+
+    
     const { employeeId, password } = req.body;
     if (!employeeId || !password) {
       return res
