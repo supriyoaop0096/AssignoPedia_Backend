@@ -2308,11 +2308,11 @@ document.addEventListener("DOMContentLoaded", () => {
         localStorage.setItem(ATTENDANCE_CHECKIN_KEY, time24);
         localStorage.setItem(ATTENDANCE_DATE_KEY, getCurrentDateISO());
         // Enable checkout
-        checkoutBtn.disabled = false;
-        checkoutInput.disabled = false;
+          checkoutBtn.disabled = false;
+          checkoutInput.disabled = false;
         // Update table
-        addOrUpdateTodayRow({
-          date: getCurrentDateISO(),
+          addOrUpdateTodayRow({
+            date: getCurrentDateISO(),
           checkIn: time12,
           checkOut: checkoutInput.value || '-',
           status: 'Pending',
@@ -2360,6 +2360,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const data = await res.json();
         if (data.alreadySubmitted) {
           alert(data.message || 'You have already checked in and checked out today. You can\'t check in or check out again until 12 AM (midnight).');
+          // Clear the check-in and check-out input fields and hide the submit button
+          checkinInput.value = '';
+          checkoutInput.value = '';
+          finalSubmitBtn.style.display = 'none';
+          localStorage.removeItem(ATTENDANCE_CHECKIN_KEY);
+          localStorage.removeItem(ATTENDANCE_CHECKOUT_KEY);
+          localStorage.removeItem(ATTENDANCE_DATE_KEY);
           return;
         }
         if (data.success) {
@@ -2371,18 +2378,18 @@ document.addEventListener("DOMContentLoaded", () => {
           checkoutInput.value = '';
           finalSubmitBtn.style.display = 'none';
           // Reload table
-          loadAttendanceTable();
+              loadAttendanceTable();
           // Show late count and early checkout count
           lateCountDisplay.textContent = `Late Count (This Month): ${data.lateCount || 0}`;
-          let elCountSpan = document.getElementById("earlyCheckoutCountDisplay");
-          if (!elCountSpan) {
-            elCountSpan = document.createElement("span");
-            elCountSpan.id = "earlyCheckoutCountDisplay";
-            elCountSpan.style = "font-weight:bold;color:#ff9800;margin-left:1.5rem;";
-            lateCountDisplay.parentNode.appendChild(elCountSpan);
-          }
-          elCountSpan.textContent = `Early Checkout (This Month): ${data.earlyCheckoutCount || 0}`;
-        } else {
+            let elCountSpan = document.getElementById("earlyCheckoutCountDisplay");
+            if (!elCountSpan) {
+              elCountSpan = document.createElement("span");
+              elCountSpan.id = "earlyCheckoutCountDisplay";
+              elCountSpan.style = "font-weight:bold;color:#ff9800;margin-left:1.5rem;";
+              lateCountDisplay.parentNode.appendChild(elCountSpan);
+            }
+            elCountSpan.textContent = `Early Checkout (This Month): ${data.earlyCheckoutCount || 0}`;
+          } else {
           alert(data.message || 'Attendance submit failed');
         }
       };
@@ -2403,7 +2410,7 @@ document.addEventListener("DOMContentLoaded", () => {
           finalSubmitBtn.style.display = '';
         }
         // Show in table
-        addOrUpdateTodayRow({
+          addOrUpdateTodayRow({
           date: todayISO,
           checkIn: checkinInput.value || '-',
           checkOut: checkoutInput.value || '-',
@@ -2726,71 +2733,71 @@ async function loadDashboard() {
     
     // --- Word Count Data (only for regular employees) ---
     if (showWordCount) {
-      // 1. Fetch word counts for chart
-      const wordCounts = await fetchWordCounts(employee.employeeId, pad(month), year);
-      // Build chart data for all days in month
-      const daysInMonth = new Date(year, month, 0).getDate();
-      const chartLabels = [];
-      const chartData = [];
-      const wordCountMap = {};
-      wordCounts.forEach((wc) => {
-        const d = new Date(wc.date);
-        const key = d.toISOString().slice(0, 10);
-        wordCountMap[key] = wc.wordCount;
-      });
-      for (let d = 1; d <= daysInMonth; d++) {
-        const dateObj = new Date(year, month - 1, d);
-        const key = dateObj.toISOString().slice(0, 10);
-        chartLabels.push(dateObj.toLocaleDateString("en-IN", { month: "short", day: "numeric" }));
-        chartData.push(wordCountMap[key] || 0);
-      }
-      // 2. Render chart
+    // 1. Fetch word counts for chart
+    const wordCounts = await fetchWordCounts(employee.employeeId, pad(month), year);
+    // Build chart data for all days in month
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const chartLabels = [];
+    const chartData = [];
+    const wordCountMap = {};
+    wordCounts.forEach((wc) => {
+      const d = new Date(wc.date);
+      const key = d.toISOString().slice(0, 10);
+      wordCountMap[key] = wc.wordCount;
+    });
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateObj = new Date(year, month - 1, d);
+      const key = dateObj.toISOString().slice(0, 10);
+      chartLabels.push(dateObj.toLocaleDateString("en-IN", { month: "short", day: "numeric" }));
+      chartData.push(wordCountMap[key] || 0);
+    }
+    // 2. Render chart
       const perfChartElem = document.getElementById("performanceChart");
       if (perfChartElem && perfChartElem.getContext) {
         const perfCtx = perfChartElem.getContext("2d");
-        if (window.performanceChartInstance) window.performanceChartInstance.destroy();
-        window.performanceChartInstance = new Chart(perfCtx, {
-          type: "line",
-          data: {
-            labels: chartLabels,
-            datasets: [
-              {
-                label: "Words Written",
-                data: chartData,
-                borderColor: "#43cea2",
-                backgroundColor: "rgba(67,206,162,0.15)",
-                fill: true,
-                tension: 0.3,
-                pointRadius: 3,
-              },
-            ],
+    if (window.performanceChartInstance) window.performanceChartInstance.destroy();
+    window.performanceChartInstance = new Chart(perfCtx, {
+      type: "line",
+      data: {
+        labels: chartLabels,
+        datasets: [
+          {
+            label: "Words Written",
+            data: chartData,
+            borderColor: "#43cea2",
+            backgroundColor: "rgba(67,206,162,0.15)",
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3,
           },
-          options: {
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: function (context) {
-                    return `Word Count: ${context.parsed.y}`;
-                  },
-                },
+        ],
+      },
+      options: {
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (context) {
+                return `Word Count: ${context.parsed.y}`;
               },
             },
-            scales: { y: { beginAtZero: true } },
-            responsive: true,
-            maintainAspectRatio: false,
-            aspectRatio: 2.2,
-            layout: { padding: 0 },
           },
-        });
+        },
+        scales: { y: { beginAtZero: true } },
+        responsive: true,
+        maintainAspectRatio: false,
+        aspectRatio: 2.2,
+        layout: { padding: 0 },
+      },
+    });
       }
-      // 3. Today's word count
-      const todayWordCount = await fetchTodayWordCount(employee.employeeId);
+    // 3. Today's word count
+    const todayWordCount = await fetchTodayWordCount(employee.employeeId);
       const todayWordCountCard = document.getElementById("todayWordCountCard");
       if (todayWordCountCard && todayWordCountCard.querySelector(".count"))
         todayWordCountCard.querySelector(".count").textContent = todayWordCount;
-      // 4. Month total word count
-      const monthTotal = chartData.reduce((sum, v) => sum + v, 0);
+    // 4. Month total word count
+    const monthTotal = chartData.reduce((sum, v) => sum + v, 0);
       const monthWordCountCard = document.getElementById("monthWordCountCard");
       if (monthWordCountCard && monthWordCountCard.querySelector(".count"))
         monthWordCountCard.querySelector(".count").textContent = monthTotal;

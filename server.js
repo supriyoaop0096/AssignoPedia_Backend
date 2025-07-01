@@ -982,6 +982,17 @@ app.post("/api/attendance", authenticateToken, restrictAttendanceByIP, async (re
         alreadySubmitted: true
       });
     } else {
+      // Calculate late count and early checkout count for the month BEFORE saving
+      const month = attendanceDate.getMonth();
+      const year = attendanceDate.getFullYear();
+      const monthStart = new Date(year, month, 1);
+      const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
+      // Count up to yesterday (exclude today)
+      const prevLateCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lt: attendanceDate }, lateEntry: true });
+      const prevEarlyCheckoutCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lt: attendanceDate }, earlyCheckout: true });
+      // If today is late/early, increment
+      const lateCount = lateEntry ? prevLateCount + 1 : prevLateCount;
+      const earlyCheckoutCount = earlyCheckout ? prevEarlyCheckoutCount + 1 : prevEarlyCheckoutCount;
       att = new Attendance({
         employeeId,
         employeeName,
@@ -989,18 +1000,13 @@ app.post("/api/attendance", authenticateToken, restrictAttendanceByIP, async (re
         checkIn,
         checkOut,
         lateEntry,
+        lateCount,
         earlyCheckout,
+        earlyCheckoutCount,
         status: "Present"
       });
       await att.save();
     }
-    // Calculate late count and early checkout count for the month
-    const month = attendanceDate.getMonth();
-    const year = attendanceDate.getFullYear();
-    const monthStart = new Date(year, month, 1);
-    const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
-    const lateCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lte: monthEnd }, lateEntry: true });
-    const earlyCheckoutCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lte: monthEnd }, earlyCheckout: true });
     return res.json({ success: true, lateEntry, earlyCheckout, lateCount, earlyCheckoutCount });
   } catch (error) {
     console.error(error);
