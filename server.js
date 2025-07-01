@@ -1095,8 +1095,7 @@ app.post("/api/word-count", authenticateToken, requireHRorAdminOrTeamLeader, asy
     const wordDateIST = new Date(wordDate.getFullYear(), wordDate.getMonth(), wordDate.getDate());
     const doc = await WordCount.findOneAndUpdate(
       { employeeId, date: wordDateIST },
-      { employeeId, date: new Date(date) },
-      { $set: { wordCount, createdBy: req.user.employeeId } },
+      { $set: { employeeId, date: wordDateIST, wordCount, createdBy: req.user.employeeId } },
       { upsert: true, new: true }
     );
     res.json({ success: true, wordCount: doc });
