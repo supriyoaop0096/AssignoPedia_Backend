@@ -264,9 +264,7 @@ function requireAdmin(req, res, next) {
 function requireHRorAdmin(req, res, next) {
   const adminRoles = ["admin", "hr_admin"];
   const hrRoles = ["hr_admin", "hr_manager", "hr_executive", "hr_recruiter"];
-
   const userRole = req.user.role;
-
   if (!adminRoles.includes(userRole) && !hrRoles.includes(userRole)) {
     return res.status(403).json({
       success: false,
@@ -285,7 +283,6 @@ const allowedIPs = [
 "49.37.8.149",
 "49.37.11.79",
 "223.185.29.129"
-
   // Add more as needed
 ];
 
@@ -1069,8 +1066,8 @@ app.get("/api/attendance-summary", authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/word-count (Admin/HR only)
-app.post("/api/word-count", authenticateToken, requireHRorAdmin, async (req, res) => {
+// POST /api/word-count (Admin/HR/Team Leader only)
+app.post("/api/word-count", authenticateToken, requireHRorAdminOrTeamLeader, async (req, res) => {
   try {
     const { employeeId, date, wordCount } = req.body;
     if (!employeeId || !date || typeof wordCount !== "number") {
