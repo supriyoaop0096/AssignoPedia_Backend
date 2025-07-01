@@ -20,6 +20,9 @@ import socialMediaService from "./social-media-service.js";
 //Make these functions globally available
 //const token = localStorage.getItem('jwtToken');
 //console.log("Token at dashbaoard",token);
+   const ATTENDANCE_CHECKIN_KEY = 'attendanceCheckInTime';
+   const ATTENDANCE_CHECKOUT_KEY = 'attendanceCheckOutTime';
+   const ATTENDANCE_DATE_KEY = 'attendanceDate';
 window.approveLeaveRequest = async function (id) {
   try {
     const approveBtn = document.querySelector(`button.approve-btn[onclick*="${id}"]`);
@@ -5660,20 +5663,14 @@ fetchAndUpdateLeaveApprovalBadge();
 const origApproveLeaveRequest = window.approveLeaveRequest;
 window.approveLeaveRequest = async function(id) {
   await origApproveLeaveRequest(id);
-  fetchAndUpdateLeaveApprovalBadge();
+  await fetchAndUpdateLeaveApprovalBadge();
 };
 const origRejectLeaveRequest = window.rejectLeaveRequest;
 window.rejectLeaveRequest = async function(id) {
   await origRejectLeaveRequest(id);
-  fetchAndUpdateLeaveApprovalBadge();
+  await fetchAndUpdateLeaveApprovalBadge();
 };
-
-// Attendance localStorage keys (define at the very top)
-const ATTENDANCE_CHECKIN_KEY = 'attendanceCheckInTime';
-const ATTENDANCE_CHECKOUT_KEY = 'attendanceCheckOutTime';
-const ATTENDANCE_DATE_KEY = 'attendanceDate';
-// ... existing code ...
-// Wherever fetchAndUpdateLeaveApprovalBadge is called (e.g., after login or on page load):
+// On page load (after login or sidebar render):
 const token = localStorage.getItem('jwtToken');
 if (token) {
   const payload = JSON.parse(atob(token.split('.')[1]));
@@ -5681,4 +5678,6 @@ if (token) {
     fetchAndUpdateLeaveApprovalBadge();
   }
 }
+// In updateLeaveApprovalBadge:
+
 // ... existing code ...
