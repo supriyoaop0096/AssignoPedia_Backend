@@ -2806,6 +2806,7 @@ async function loadDashboard() {
   // --- Calendar rendering ---
   function renderAttendanceCalendar(containerId, days) {
     const container = document.getElementById(containerId);
+    if (!container) return; // Prevent error if element is missing
     if (!days || !days.length) {
       container.innerHTML = "<div>No data</div>";
       return;
@@ -2822,6 +2823,7 @@ async function loadDashboard() {
   }
   function renderLeavesCalendar(containerId, days) {
     const container = document.getElementById(containerId);
+    if (!container) return; // Prevent error if element is missing
     if (!days || !days.length) {
       container.innerHTML = "<div>No data</div>";
       return;
