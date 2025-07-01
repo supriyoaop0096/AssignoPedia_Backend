@@ -2090,13 +2090,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 <div class="attendance-form">
                     <!-- Check-In -->
                     <div class="form-section">
-                        <h3>Check-In</h3>
+                        <h3>Log-In</h3>
                         <input type="text" id="checkinTime" placeholder="Click to record" readonly />
                         <button id="checkinBtn">Submit Log-In</button>
                     </div>
                     <!-- Check-Out -->
                     <div class="form-section">
-                        <h3>Check-Out</h3>
+                        <h3>Log-Out</h3>
                         <input type="text" id="checkoutTime" placeholder="Click to record" readonly />
                         <button id="checkoutBtn">Submit Log-Out</button>
                     </div>
