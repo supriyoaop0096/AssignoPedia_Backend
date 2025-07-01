@@ -274,6 +274,21 @@ function requireHRorAdmin(req, res, next) {
   next();
 }
 
+// Middleware for HR, Admin, and Team Leader access (for word count entry only)
+function requireHRorAdminOrTeamLeader(req, res, next) {
+  const adminRoles = ["admin", "hr_admin"];
+  const hrRoles = ["hr_admin", "hr_manager", "hr_executive", "hr_recruiter"];
+  const teamLeaderRoles = ["team_leader"];
+  const userRole = req.user.role;
+  if (!adminRoles.includes(userRole) && !hrRoles.includes(userRole) && !teamLeaderRoles.includes(userRole)) {
+    return res.status(403).json({
+      success: false,
+      message: "Access denied. Only administrators, HR personnel, and team leaders can perform this action.",
+    });
+  }
+  next();
+}
+
 // Company allowed IPs for attendance section (sample, update as needed)
 const allowedIPs = [
  
@@ -1737,3 +1752,4 @@ app.use((err, req, res, next) => {
 // ✅ Start Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
