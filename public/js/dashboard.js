@@ -2358,6 +2358,10 @@ document.addEventListener("DOMContentLoaded", () => {
           }),
         });
         const data = await res.json();
+        if (data.alreadySubmitted) {
+          alert(data.message || 'You have already checked in and checked out today. You can\'t check in or check out again until 12 AM (midnight).');
+          return;
+        }
         if (data.success) {
           // Clear localStorage
           localStorage.removeItem(ATTENDANCE_CHECKIN_KEY);

@@ -974,15 +974,26 @@ app.post("/api/attendance", authenticateToken, restrictAttendanceByIP, async (re
     let earlyCheckout = hOut < 18;
     // Save attendance
     let att = await Attendance.findOne({ employeeId, date: attendanceDate });
-    if (!att) {
-      att = new Attendance({ employeeId, employeeName, date: attendanceDate });
+    if (att) {
+      // Attendance already submitted for today, do not overwrite
+      return res.json({
+        success: false,
+        message: "You have already checked in and checked out today. You can't check in or check out again until 12 AM (midnight).",
+        alreadySubmitted: true
+      });
+    } else {
+      att = new Attendance({
+        employeeId,
+        employeeName,
+        date: attendanceDate,
+        checkIn,
+        checkOut,
+        lateEntry,
+        earlyCheckout,
+        status: "Present"
+      });
+      await att.save();
     }
-    att.checkIn = checkIn;
-    att.checkOut = checkOut;
-    att.lateEntry = lateEntry;
-    att.earlyCheckout = earlyCheckout;
-    att.status = "Present";
-    await att.save();
     // Calculate late count and early checkout count for the month
     const month = attendanceDate.getMonth();
     const year = attendanceDate.getFullYear();
