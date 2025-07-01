@@ -2092,13 +2092,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     <div class="form-section">
                         <h3>Check-In</h3>
                         <input type="text" id="checkinTime" placeholder="Click to record" readonly />
-                        <button id="checkinBtn">Submit Check-In</button>
+                        <button id="checkinBtn">Submit Log-In</button>
                     </div>
                     <!-- Check-Out -->
                     <div class="form-section">
                         <h3>Check-Out</h3>
                         <input type="text" id="checkoutTime" placeholder="Click to record" readonly />
-                        <button id="checkoutBtn">Submit Check-Out</button>
+                        <button id="checkoutBtn">Submit Log-Out</button>
                     </div>
                 </div>
                 <div style="margin: 1rem 0; text-align: right;">
@@ -2112,8 +2112,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     <thead>
                         <tr>
                             <th>Date</th>
-                            <th>Check-In</th>
-                            <th>Check-Out</th>
+                            <th>Log-In</th>
+                            <th>Log-Out</th>
                             <th>Status</th>
                         </tr>
                     </thead>
@@ -2359,7 +2359,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         const data = await res.json();
         if (data.alreadySubmitted) {
-          alert(data.message || 'You have already checked in and checked out today. You can\'t check in or check out again until 12 AM (midnight).');
+          alert(data.message || 'You have already logged in and logged out today. You can\'t log in or log out again until 12 AM (midnight).');
           // Clear the check-in and check-out input fields and hide the submit button
           checkinInput.value = '';
           checkoutInput.value = '';
@@ -2388,7 +2388,7 @@ document.addEventListener("DOMContentLoaded", () => {
               elCountSpan.style = "font-weight:bold;color:#ff9800;margin-left:1.5rem;";
               lateCountDisplay.parentNode.appendChild(elCountSpan);
             }
-            elCountSpan.textContent = `Early Checkout (This Month): ${data.earlyCheckoutCount || 0}`;
+            elCountSpan.textContent = `Early Logout (This Month): ${data.earlyCheckoutCount || 0}`;
           } else {
           alert(data.message || 'Attendance submit failed');
         }
@@ -2467,8 +2467,8 @@ document.addEventListener("DOMContentLoaded", () => {
             tbody.innerHTML += `
                 <tr>
                   <td data-label="Date">${day.date}</td>
-                  <td data-label="Check-In">${checkInDisplay}</td>
-                  <td data-label="Check-Out">${checkOutDisplay}</td>
+                  <td data-label="Log-In">${checkInDisplay}</td>
+                  <td data-label="Log-Out">${checkOutDisplay}</td>
                   <td data-label="Status">${day.attendanceStatus}</td>
                 </tr>
               `;
