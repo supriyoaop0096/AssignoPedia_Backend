@@ -1093,9 +1093,15 @@ app.post("/api/word-count", authenticateToken, requireHRorAdminOrTeamLeader, asy
     // When storing word count, if date is today, use IST day
     const wordDate = date ? new Date(date) : getISTDate();
     const wordDateIST = new Date(wordDate.getFullYear(), wordDate.getMonth(), wordDate.getDate());
+    // Find existing word count for this employee and date
+    let existing = await WordCount.findOne({ employeeId, date: wordDateIST });
+    let newWordCount = wordCount;
+    if (existing) {
+      newWordCount = existing.wordCount + wordCount;
+    }
     const doc = await WordCount.findOneAndUpdate(
       { employeeId, date: wordDateIST },
-      { $set: { employeeId, date: wordDateIST, wordCount, createdBy: req.user.employeeId } },
+      { $set: { employeeId, date: wordDateIST, wordCount: newWordCount, createdBy: req.user.employeeId } },
       { upsert: true, new: true }
     );
     res.json({ success: true, wordCount: doc });
