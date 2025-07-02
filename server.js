@@ -972,6 +972,8 @@ app.post("/api/attendance", authenticateToken, restrictAttendanceByIP, async (re
     let lateEntry = hIn > 11 || (hIn === 11 && mIn > 30);
     const [hOut, mOut] = checkOut.split(":").map(Number);
     let earlyCheckout = hOut < 18;
+    let lateCount = 0;
+    let earlyCheckoutCount = 0;
     // Save attendance
     let att = await Attendance.findOne({ employeeId, date: attendanceDate });
     if (att) {
@@ -991,8 +993,8 @@ app.post("/api/attendance", authenticateToken, restrictAttendanceByIP, async (re
       const prevLateCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lt: attendanceDate }, lateEntry: true });
       const prevEarlyCheckoutCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lt: attendanceDate }, earlyCheckout: true });
       // If today is late/early, increment
-      const lateCount = lateEntry ? prevLateCount + 1 : prevLateCount;
-      const earlyCheckoutCount = earlyCheckout ? prevEarlyCheckoutCount + 1 : prevEarlyCheckoutCount;
+      lateCount = lateEntry ? prevLateCount + 1 : prevLateCount;
+      earlyCheckoutCount = earlyCheckout ? prevEarlyCheckoutCount + 1 : prevEarlyCheckoutCount;
       att = new Attendance({
         employeeId,
         employeeName,
