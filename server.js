@@ -810,6 +810,28 @@ app.post(
           attachment: attachment && isFirstSegment ? attachment : undefined, // Only attach file to first segment
         });
         await leave.save();
+        // --- Notification for HR/Admin ---
+        const hrRoles = ["hr_admin", "hr_manager", "hr_executive", "hr_recruiter"];
+        const hrEmployees = await Employee.find({ role: { $in: hrRoles } }, "employeeId email");
+        const adminEmployees = await Employee.find({ role: "Admin" }, "employeeId email");
+        const allRecipients = [...hrEmployees, ...adminEmployees];
+        for (const recipient of allRecipients) {
+          const notification = new Notification({
+            message: `New leave request from ${name} (${employeeId}) for ${leaveCount} days from ${from.toDateString()} to ${to.toDateString()}`,
+            senderId: employeeId,
+            senderName: name,
+            recipientId: recipient.employeeId,
+            isForAll: false
+          });
+          await notification.save();
+          if (recipient.email) {
+            await sendNoticeEmail({
+              to: recipient.email,
+              subject: `New Leave Request - ${name}`,
+              text: `A new leave request has been submitted:\n\nEmployee: ${name} (${employeeId})\nReason: ${reason}\nDuration: ${leaveCount} days\nFrom: ${from.toDateString()}\nTo: ${to.toDateString()}\n\nPlease review and approve/reject this request.`
+            });
+          }
+        }
         responses.push({
           month: monthNum,
           year: yearNum,
@@ -870,6 +892,23 @@ app.patch(
       leave.status = "Approved";
       leave.approvedAt = getISTDate();
       await leave.save();
+      // --- Notification for employee ---
+      const notification = new Notification({
+        message: `Your leave request for ${leave.leaveCount} days (${leave.fromDate.toDateString()} - ${leave.toDate.toDateString()}) has been approved.`,
+        senderId: req.user.employeeId,
+        senderName: req.user.name || `${req.user.firstName} ${req.user.lastName}`,
+        recipientId: leave.employeeId,
+        isForAll: false
+      });
+      await notification.save();
+      const employee = await Employee.findOne({ employeeId: leave.employeeId });
+      if (employee && employee.email) {
+        await sendNoticeEmail({
+          to: employee.email,
+          subject: `Leave Request Approved - ${leave.name}`,
+          text: `Your leave request has been approved by ${req.user.name || `${req.user.firstName} ${req.user.lastName}`}.\n\nDetails:\nDuration: ${leave.leaveCount} days\nFrom: ${leave.fromDate.toDateString()}\nTo: ${leave.toDate.toDateString()}\nReason: ${leave.reason}\n\nThis is an automated no-reply email.`
+        });
+      }
       res.json({ success: true, message: "Leave request approved" });
     } catch (err) {
       res.status(500).json({ success: false, message: "Server error" });
@@ -1764,6 +1803,23 @@ app.patch("/api/leave-requests/:id/approve", authenticateToken, requireHRorAdmin
     if (req.user.role === "admin") leave.isReadByAdmin = true;
     if (["hr_admin", "hr_manager", "hr_executive", "hr_recruiter"].includes(req.user.role)) leave.isReadByHR = true;
     await leave.save();
+    // --- Notification for employee ---
+    const notification = new Notification({
+      message: `Your leave request for ${leave.leaveCount} days (${leave.fromDate.toDateString()} - ${leave.toDate.toDateString()}) has been approved.`,
+      senderId: req.user.employeeId,
+      senderName: req.user.name || `${req.user.firstName} ${req.user.lastName}`,
+      recipientId: leave.employeeId,
+      isForAll: false
+    });
+    await notification.save();
+    const employee = await Employee.findOne({ employeeId: leave.employeeId });
+    if (employee && employee.email) {
+      await sendNoticeEmail({
+        to: employee.email,
+        subject: `Leave Request Approved - ${leave.name}`,
+        text: `Your leave request has been approved by ${req.user.name || `${req.user.firstName} ${req.user.lastName}`}.\n\nDetails:\nDuration: ${leave.leaveCount} days\nFrom: ${leave.fromDate.toDateString()}\nTo: ${leave.toDate.toDateString()}\nReason: ${leave.reason}\n\nThis is an automated no-reply email.`
+      });
+    }
     res.json({ success: true, message: "Leave request approved" });
   } catch (err) {
     res.status(500).json({ success: false, message: "Server error" });
@@ -1805,4 +1861,28 @@ app.use((err, req, res, next) => {
 // ✅ Start Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// Search employees by name (admin/HR only)
+app.get("/api/employees/search", authenticateToken, requireHRorAdmin, async (req, res) => {
+  try {
+    const { name } = req.query;
+    if (!name || name.trim().length < 2) {
+      return res.status(400).json({ success: false, message: "Name query required (min 2 chars)" });
+    }
+    const regex = new RegExp(name.trim(), "i");
+    const employees = await Employee.find(
+      {
+        $or: [
+          { firstName: regex },
+          { lastName: regex },
+          { name: regex }
+        ]
+      },
+      "employeeId firstName lastName name"
+    ).limit(15);
+    res.json({ success: true, employees });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
 

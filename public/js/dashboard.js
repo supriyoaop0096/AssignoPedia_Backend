@@ -1267,16 +1267,21 @@ document.addEventListener("DOMContentLoaded", () => {
           <form id="employeeSearchForm" class="section-form" style="max-width: 900px; margin: 0 auto;">
             <div class="form-row">
               <div class="form-group">
+                <label for="searchEmployeeName">Search by Name</label>
+                <input type="text" id="searchEmployeeName" placeholder="Type employee name..." autocomplete="off" />
+                <div id="nameSearchDropdown" class="search-dropdown" style="position:relative;"></div>
+              </div>
+              <div class="form-group">
                 <label for="searchEmployeeId">Search by Employee ID</label>
                 <input type="text" id="searchEmployeeId" placeholder="Enter Employee ID" required />
               </div>
             </div>
           </form>
-          <div id="employeeStatsResult" style="margin-top: 2rem;
-          width:800px;"></div>
+          <div id="employeeStatsResult" style="margin-top: 2rem;width:800px;"></div>
         </div>
       </div>
     `;
+    attachStatsNameSearch();
 
     const searchInput = document.getElementById("searchEmployeeId");
     const resultDiv = document.getElementById("employeeStatsResult");
@@ -1332,7 +1337,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (img) {
               img.onerror = function () {
                 this.onerror = null;
-                this.src = "images/default-avatar.png";
+                this.src = "/images/logo.png";
               };
             }
           } else {
@@ -5166,6 +5171,11 @@ function loadManageEmployee() {
       <h2>Manage Employee Account</h2>
       <form id="manageEmployeeForm">
         <div class="form-group">
+          <label for="searchEmployeeName">Search by Name</label>
+          <input type="text" id="searchEmployeeName" placeholder="Type employee name..." autocomplete="off" />
+          <div id="nameSearchDropdown" class="search-dropdown" style="position:relative;"></div>
+        </div>
+        <div class="form-group">
           <label for="searchEmployeeId">Search Employee ID</label>
           <input type="text" id="searchEmployeeId" placeholder="Enter Employee ID to search" required />
         </div>
@@ -5253,6 +5263,7 @@ function loadManageEmployee() {
       </form>
     </div>
   `;
+  attachManageEmployeeNameSearch();
 
   const style = document.createElement("style");
   style.textContent = `
@@ -5699,3 +5710,154 @@ if (token) {
 // In updateLeaveApprovalBadge:
 
 // ... existing code ...
+
+// --- Add this inside loadManageEmployee after rendering the form ---
+function attachManageEmployeeNameSearch() {
+  const nameInput = document.getElementById("searchEmployeeName");
+  const idInput = document.getElementById("searchEmployeeId");
+  const dropdown = document.getElementById("nameSearchDropdown");
+  let nameTimeout;
+  if (nameInput && idInput && dropdown) {
+    nameInput.addEventListener("input", function() {
+      clearTimeout(nameTimeout);
+      const value = this.value.trim();
+      dropdown.innerHTML = "";
+      if (value.length < 2) return;
+      nameTimeout = setTimeout(async () => {
+        const token = localStorage.getItem("jwtToken");
+        const res = await fetch(`/api/employees/search?name=${encodeURIComponent(value)}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.employees.length) {
+          dropdown.innerHTML = `<div style='position:absolute;z-index:1000;background:#fff;border:1px solid #ccc;width:100%;max-height:180px;overflow:auto;'>${data.employees.map(emp => `<div class='dropdown-item' style='padding:8px;cursor:pointer;' data-id='${emp.employeeId}'>${emp.firstName || emp.name || ''} ${emp.lastName || ''} <span style='color:#764ba2;font-weight:bold;'>(${emp.employeeId})</span></div>`).join('')}</div>`;
+          dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+            item.onclick = function(e) {
+              idInput.value = this.getAttribute('data-id');
+              dropdown.innerHTML = "";
+              e.stopPropagation();
+            };
+          });
+        }
+      }, 300);
+    });
+    // Hide dropdown on outside click
+    document.addEventListener('click', function(e) {
+      if (!dropdown.contains(e.target) && e.target !== nameInput) {
+        dropdown.innerHTML = "";
+      }
+    });
+  }
+}
+// ... existing code ...
+// --- Add this inside loadStats after rendering the form ---
+function attachStatsNameSearch(resultDiv) {
+  const nameInputStats = document.getElementById("searchEmployeeName");
+  const idInputStats = document.getElementById("searchEmployeeId");
+  const dropdownStats = document.getElementById("nameSearchDropdown");
+  let nameTimeoutStats;
+  if (nameInputStats && idInputStats && dropdownStats) {
+    nameInputStats.addEventListener("input", function() {
+      clearTimeout(nameTimeoutStats);
+      const value = this.value.trim();
+      dropdownStats.innerHTML = "";
+      if (value.length < 2) return;
+      nameTimeoutStats = setTimeout(async () => {
+        const token = localStorage.getItem("jwtToken");
+        const res = await fetch(`/api/employees/search?name=${encodeURIComponent(value)}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.employees.length) {
+          dropdownStats.innerHTML = `<div style='position:absolute;z-index:1000;background:#fff;border:1px solid #ccc;width:100%;max-height:180px;overflow:auto;'>${data.employees.map(emp => `<div class='dropdown-item' style='padding:8px;cursor:pointer;' data-id='${emp.employeeId}'>${emp.firstName || emp.name || ''} ${emp.lastName || ''} <span style='color:#764ba2;font-weight:bold;'>(${emp.employeeId})</span></div>`).join('')}</div>`;
+          dropdownStats.querySelectorAll('.dropdown-item').forEach(item => {
+            item.onclick = function(e) {
+              idInputStats.value = this.getAttribute('data-id');
+              dropdownStats.innerHTML = "";
+              e.stopPropagation();
+              fetchEmployeeDetails(this.getAttribute('data-id'), resultDiv);
+            };
+          });
+        }
+      }, 300);
+    });
+    document.addEventListener('click', function(e) {
+      if (!dropdownStats.contains(e.target) && e.target !== nameInputStats) {
+        dropdownStats.innerHTML = "";
+      }
+    });
+  }
+}
+// ... existing code ...
+
+// Move this function to top-level and attach to window
+window.fetchEmployeeDetails = function(employeeId, resultDiv) {
+  // fallback for resultDiv
+  if (!resultDiv) {
+    resultDiv = document.getElementById("employeeStatsResult");
+  }
+  if (!employeeId || !resultDiv) {
+    if (resultDiv) resultDiv.innerHTML = "";
+    return;
+  }
+  resultDiv.innerHTML = '<div class="loading">Searching...</div>';
+  fetch(`/api/employees`, {
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem("jwtToken")}`,
+    },
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success && Array.isArray(data.employees)) {
+        const found = data.employees.find(
+          (emp) => emp.employeeId && emp.employeeId.toLowerCase() === employeeId.toLowerCase()
+        );
+        if (found) {
+          const imgSrc =
+            found.profileImage && found._id
+              ? `/api/employees/${found._id}/profile-image`
+              : "/images/logo.png";
+          resultDiv.innerHTML = `
+            <div class="employee-card" style="background:rgba(255,255,255,0.13);border-radius:16px;padding:2rem;box-shadow:0 2px 8px rgba(67,206,162,0.10);max-width:900px;margin:0 auto;display:flex;gap:2rem;align-items:center;">
+              <img id="empProfileImg" src="${imgSrc}" alt="${
+            found.firstName || found.name || ""
+          }" style="width:90px;height:90px;border-radius:12px;object-fit:cover;border:2px solid #764ba2;box-shadow:0 2px 8px rgba(118,75,162,0.10);background:#fff;">
+              <div style="flex:1;">
+                <h3 style="margin-bottom:0.5rem;color:#764ba2;">${
+                  found.firstName || found.name || ""
+                } ${found.lastName || ""}</h3>
+                <p><strong>Employee ID:</strong> ${found.employeeId}</p>
+                <p><strong>Role:</strong> ${found.role}</p>
+                <p><strong>Email:</strong> ${found.email || "-"}</p>
+                <p><strong>Mobile:</strong> ${found.mobile || "-"}</p>
+                <p><strong>Date of Joining:</strong> ${
+                  found.doj ? new Date(found.doj).toLocaleDateString() : "-"
+                }</p>
+                <p><strong>Address:</strong> ${found.address || "-"}</p>
+                <p><strong>ID Card:</strong> ${
+                  found.idCardType ? found.idCardType.toUpperCase() : "-"
+                } ${found.idCardNumber || ""}</p>
+              </div>
+            </div>
+          `;
+          const img = document.getElementById("empProfileImg");
+          if (img) {
+            img.onerror = function () {
+              this.onerror = null;
+              this.src = "/images/logo.png";
+            };
+          }
+        } else {
+          resultDiv.innerHTML =
+            '<div class="error" style="color:#dc3545;font-weight:bold;">No employee found with this ID.</div>';
+        }
+      } else {
+        resultDiv.innerHTML =
+          '<div class="error" style="color:#dc3545;font-weight:bold;">Failed to fetch employee data.</div>';
+      }
+    })
+    .catch(() => {
+      resultDiv.innerHTML =
+        '<div class="error" style="color:#dc3545;font-weight:bold;">Error searching employee.</div>';
+    });
+}
