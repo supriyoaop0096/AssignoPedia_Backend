@@ -1096,11 +1096,14 @@ app.get("/api/attendance-summary", authenticateToken, async (req, res) => {
       const key = new Date(y, m, d).toISOString().slice(0, 10);
       // Check if there is a present attendance record for this date
       const presentRecord = allAttendance.find(a => a.date.toISOString().slice(0, 10) === key && a.status === 'Present');
-      //console.log("presentRecord",presentRecord);
       days.push({
         date: key,
         attendanceStatus: presentRecord ? 'Present' : 'Absent',
         leaveType: leaveDays[key] || null,
+        checkIn: presentRecord ? presentRecord.checkIn : null,
+        checkOut: presentRecord ? presentRecord.checkOut : null,
+        lateEntry: presentRecord ? presentRecord.lateEntry : false,
+        earlyCheckout: presentRecord ? presentRecord.earlyCheckout : false
       });
     }
  
