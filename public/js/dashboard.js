@@ -2338,6 +2338,11 @@ document.addEventListener("DOMContentLoaded", () => {
       };
 
       finalSubmitBtn.onclick = async function () {
+        const token = localStorage.getItem("jwtToken");
+        if (!token) {
+          window.location.href = "/login.html";
+          return;
+        }
         const checkIn = localStorage.getItem(ATTENDANCE_CHECKIN_KEY);
         const checkOut = localStorage.getItem(ATTENDANCE_CHECKOUT_KEY);
         const date = localStorage.getItem(ATTENDANCE_DATE_KEY);
