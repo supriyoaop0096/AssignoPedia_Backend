@@ -4436,15 +4436,20 @@ async function loadAttendanceTracker() {
   mainContent.innerHTML = `
       <div class="admin-content-section centered-section scrollable-form-container" id="attendance-tracker-section">
         <h2>Attendance Tracker</h2>
-        <form id="attendanceTrackerForm" class="section-form" style="max-width:500px;margin-bottom:2rem;">
-          <div class="form-row">
-            <div class="form-group">
-              <label>Employee ID</label>
-              <input type="text" id="attTrackerEmployeeId" required placeholder="Enter Employee ID" />
+        <form id="attendanceTrackerForm" class="section-form" style="max-width:540px;margin-bottom:2rem;">
+          <div class="form-row" style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end;">
+            <div class="form-group" style="flex:1 1 220px;min-width:200px;position:relative;">
+              <label style="margin-bottom:6px;">Employee Name</label>
+              <input type="text" id="attTrackerEmployeeName" autocomplete="off" placeholder="Enter Employee Name" style="width:100%;min-width:0;" />
+              <div id="attTrackerNameDropdown" style="width:100%;"></div>
             </div>
-            <div class="form-group">
-              <label>Month</label>
-              <select id="attTrackerMonth" required>
+            <div class="form-group" style="flex:1 1 160px;min-width:140px;">
+              <label style="margin-bottom:6px;">Employee ID</label>
+              <input type="text" id="attTrackerEmployeeId" required placeholder="Enter Employee ID" style="width:100%;min-width:0;" />
+            </div>
+            <div class="form-group" style="flex:0 1 110px;min-width:90px;">
+              <label style="margin-bottom:6px;">Month</label>
+              <select id="attTrackerMonth" required style="width:100%;min-width:0;">
                 ${Array.from(
                   { length: 12 },
                   (_, i) =>
@@ -4455,9 +4460,9 @@ async function loadAttendanceTracker() {
                 ).join("")}
               </select>
             </div>
-            <div class="form-group">
-              <label>Year</label>
-              <select id="attTrackerYear" required>
+            <div class="form-group" style="flex:0 1 90px;min-width:70px;">
+              <label style="margin-bottom:6px;">Year</label>
+              <select id="attTrackerYear" required style="width:100%;min-width:0;">
                 ${Array.from({ length: 5 }, (_, i) => {
                   const y = new Date().getFullYear() - i;
                   return `<option value="${y}">${y}</option>`;
@@ -4465,15 +4470,30 @@ async function loadAttendanceTracker() {
               </select>
             </div>
           </div>
-          <div class="form-row">
+          <div class="form-row" style="justify-content:flex-start;margin-top:1.2rem;">
             <button type="submit" class="add-employee-btn">Search</button>
           </div>
         </form>
         <div id="attendanceTrackerResult" class="attendance-tracker-result-scrollable"></div>
       </div>
-      <style>/* ...existing inline styles... */</style>
+      <style>
+        @media (max-width: 700px) {
+          #attendance-tracker-section .form-row {
+            flex-direction: column !important;
+            gap: 0.7rem !important;
+            align-items: stretch !important;
+          }
+        }
+        #attTrackerNameDropdown > div {
+          left: 0;
+          right: 0;
+        }
+      </style>
     `;
+  // Attach name search dropdown logic
+  attachAttendanceTrackerNameSearch();
   document.getElementById("attendanceTrackerForm").onsubmit = async function (e) {
+    // ... existing code ...
     e.preventDefault();
     const empId = document.getElementById("attTrackerEmployeeId").value.trim();
     const month = document.getElementById("attTrackerMonth").value;
@@ -5861,3 +5881,47 @@ window.fetchEmployeeDetails = function(employeeId, resultDiv) {
         '<div class="error" style="color:#dc3545;font-weight:bold;">Error searching employee.</div>';
     });
 }
+
+// --- Add this function for Attendance Tracker name search ---
+function attachAttendanceTrackerNameSearch() {
+  const nameInput = document.getElementById("attTrackerEmployeeName");
+  const idInput = document.getElementById("attTrackerEmployeeId");
+  const dropdown = document.getElementById("attTrackerNameDropdown");
+  let nameTimeout;
+  if (nameInput && idInput && dropdown) {
+    nameInput.addEventListener("input", function() {
+      clearTimeout(nameTimeout);
+      const value = this.value.trim();
+      dropdown.innerHTML = "";
+      if (value.length < 2) return;
+      nameTimeout = setTimeout(async () => {
+        const token = localStorage.getItem("jwtToken");
+        const res = await fetch(`/api/employees/search?name=${encodeURIComponent(value)}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.employees.length) {
+          dropdown.innerHTML = `<div style='position:absolute;z-index:1000;background:#fff;border:1px solid #ccc;width:100%;max-height:180px;overflow:auto;'>${data.employees.map(emp => {
+            const displayName = `${emp.firstName || emp.name || ''} ${emp.lastName || ''}`.trim();
+            return `<div class='dropdown-item' style='padding:8px;cursor:pointer;' data-id='${emp.employeeId}' data-name='${displayName.replace(/'/g, "&#39;")}' >${displayName} <span style='color:#764ba2;font-weight:bold;'>(${emp.employeeId})</span></div>`;
+          }).join('')}</div>`;
+          dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+            item.onclick = function(e) {
+              idInput.value = this.getAttribute('data-id');
+              nameInput.value = this.getAttribute('data-name');
+              dropdown.innerHTML = "";
+              e.stopPropagation();
+            };
+          });
+        }
+      }, 300);
+    });
+    // Hide dropdown on outside click
+    document.addEventListener('click', function(e) {
+      if (!dropdown.contains(e.target) && e.target !== nameInput) {
+        dropdown.innerHTML = "";
+      }
+    });
+  }
+}
+// ... existing code ...

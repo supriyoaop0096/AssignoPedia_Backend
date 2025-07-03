@@ -1937,6 +1937,7 @@ width:80vw;
   max-height: 320px;
   overflow-y: auto;
   padding-right: 4px;
+  width:400px;
 }
 #notificationsList::-webkit-scrollbar {
   width: 7px;
@@ -2116,6 +2117,7 @@ width:80vw;
     min-width: 0;
     max-width: none;
   }
+ 
 }
 /* Custom scrollbar for the form in manage employee */
 .manage-employee-container form::-webkit-scrollbar {
@@ -2299,5 +2301,8 @@ flex-direction: column;
     width: 100%;
     min-width: 0;
     justify-content: flex-start;
+  }
+  #notificationsList{
+    width:250px;
   }
 }
