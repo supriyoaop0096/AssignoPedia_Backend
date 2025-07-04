@@ -130,6 +130,23 @@ function setLogoutListener() {
 document.addEventListener("DOMContentLoaded", () => {
   mainContent = document.getElementById("mainContent");
 
+  // --- Inactivity Auto-Logout (5 minutes) ---
+  let inactivityTimeout;
+  const INACTIVITY_LIMIT = 5 * 60 * 1000; // 5 minutes in ms
+  function resetInactivityTimer() {
+    clearTimeout(inactivityTimeout);
+    inactivityTimeout = setTimeout(() => {
+      localStorage.removeItem("employee");
+      localStorage.removeItem("jwtToken");
+      window.location.href = "login.html";
+    }, INACTIVITY_LIMIT);
+  }
+  // Reset timer on any user activity
+  ["mousemove", "keydown", "mousedown", "touchstart"].forEach(evt => {
+    document.addEventListener(evt, resetInactivityTimer, true);
+  });
+  resetInactivityTimer();
+
   const employee = JSON.parse(localStorage.getItem("employee"));
   const token = localStorage.getItem("jwtToken");
   console.log("login->", token);
@@ -147,7 +164,7 @@ document.addEventListener("DOMContentLoaded", () => {
     employee.role === "hr_recruiter";
   isBDMorTL = employee.role === "bdm" || employee.role === "team_leader" || employee.role === "tl";
   isRegularEmployee = !isAdminRole && !isHRRole && !isBDMorTL;
-  mainContent = document.getElementById("mainContent");
+  // mainContent = document.getElementById("mainContent"); // Remove this redeclaration
 
   // Enhanced Access Control Summary:
   // - Admin: My Dashboard (no word count), Notice Board, Leave Approval, Leave Tracker, Attendance Tracker, Pay Slip, WFH Approval, Social Media, Employee Stats
@@ -2750,14 +2767,21 @@ async function loadDashboard() {
     const chartLabels = [];
     const chartData = [];
     const wordCountMap = {};
+    // Use IST for date key
+    function toISTDateString(date) {
+      // Convert UTC date to IST
+      const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+      const istDate = new Date(date.getTime() + IST_OFFSET);
+      return `${istDate.getFullYear()}-${String(istDate.getMonth() + 1).padStart(2, '0')}-${String(istDate.getDate()).padStart(2, '0')}`;
+    }
     wordCounts.forEach((wc) => {
       const d = new Date(wc.date);
-      const key = d.toISOString().slice(0, 10);
+      const key = toISTDateString(d);
       wordCountMap[key] = wc.wordCount;
     });
     for (let d = 1; d <= daysInMonth; d++) {
       const dateObj = new Date(year, month - 1, d);
-      const key = dateObj.toISOString().slice(0, 10);
+      const key = toISTDateString(dateObj);
       chartLabels.push(dateObj.toLocaleDateString("en-IN", { month: "short", day: "numeric" }));
       chartData.push(wordCountMap[key] || 0);
     }

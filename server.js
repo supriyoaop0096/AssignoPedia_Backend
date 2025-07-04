@@ -130,6 +130,7 @@ const Employee = conn.model("Employee", employeeSchema);
   });
 */
 
+
 // --- Update LeaveRequest schema to support attachment ---
 const leaveRequestSchema = new mongoose.Schema(
   {
@@ -180,6 +181,28 @@ const attendanceSchema = new mongoose.Schema(
 );
 attendanceSchema.index({ employeeId: 1, date: 1 }, { unique: true });
 const Attendance = conn.model("Attendance", attendanceSchema);
+// const attendanceData = {
+//   employeeId: "AOP0096",
+//   employeeName: "Abhra Das",
+//   date: "2025-07-03T00:00:00.000+00:00",
+//   status: "Present",
+//   checkIn: "11:27",
+//   checkOut: "19:05",
+//   lateEntry: false,
+//   lateCount: 1,
+//   earlyCheckout: false,
+//   earlyCheckoutCount: 0,
+//   createdAt: new Date(),
+//   updatedAt: new Date()
+// };
+
+// Attendance.create(attendanceData)
+//   .then(doc => {
+//     console.log("Attendance added:", doc);
+//   })
+//   .catch(err => {
+//     console.error("Error adding attendance:", err);
+//   });
 
 // Word Count Model
 const wordCountSchema = new mongoose.Schema(
@@ -1177,18 +1200,23 @@ app.post("/api/word-count", authenticateToken, requireHRorAdminOrTeamLeader, asy
         .status(400)
         .json({ success: false, message: "employeeId, date, and wordCount are required." });
     }
-    // When storing word count, if date is today, use IST day
-    const wordDate = date ? new Date(date) : getISTDate();
-    const wordDateIST = new Date(wordDate.getFullYear(), wordDate.getMonth(), wordDate.getDate());
+    // Normalize to IST midnight
+    const inputDate = new Date(date);
+    // Convert to IST midnight
+    const istMidnight = new Date(inputDate.getTime());
+    istMidnight.setHours(0, 0, 0, 0); // Set to local midnight
+    // Adjust for IST offset
+    const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+    const utcMidnight = new Date(istMidnight.getTime() - IST_OFFSET);
     // Find existing word count for this employee and date
-    let existing = await WordCount.findOne({ employeeId, date: wordDateIST });
+    let existing = await WordCount.findOne({ employeeId, date: utcMidnight });
     let newWordCount = wordCount;
     if (existing) {
       newWordCount = existing.wordCount + wordCount;
     }
     const doc = await WordCount.findOneAndUpdate(
-      { employeeId, date: wordDateIST },
-      { $set: { employeeId, date: wordDateIST, wordCount: newWordCount, createdBy: req.user.employeeId } },
+      { employeeId, date: utcMidnight },
+      { $set: { employeeId, date: utcMidnight, wordCount: newWordCount, createdBy: req.user.employeeId } },
       { upsert: true, new: true }
     );
     res.json({ success: true, wordCount: doc });
