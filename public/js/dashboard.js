@@ -2579,13 +2579,29 @@ async function fetchWordCounts(employeeId, month, year) {
   return data.success ? data.wordCounts : [];
 }
 async function fetchTodayWordCount(employeeId) {
+  // Use IST date for today
+  const now = new Date();
+  const istOffset = 330;
+  const istTime = new Date(now.getTime() + (istOffset * 60 * 1000));
+  const istDateString = istTime.toISOString().slice(0, 10);
   const token = localStorage.getItem("jwtToken");
-  const res = await fetch(`/api/word-count/today?employeeId=${employeeId}`, {
+  const res = await fetch(`/api/word-count?employeeId=${employeeId}&month=${istTime.getMonth() + 1}&year=${istTime.getFullYear()}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) return null;
   const data = await res.json();
-  return data.success && data.wordCount ? data.wordCount.wordCount : 0;
+  if (data.success && Array.isArray(data.wordCounts)) {
+    // Patch: Convert each entry's UTC date to IST before comparing
+    const todayEntry = data.wordCounts.find(wc => {
+      if (!wc.date) return false;
+      const d = new Date(wc.date);
+      const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+      const istDate = new Date(d.getTime() + IST_OFFSET);
+      const wcISTDateString = istDate.toISOString().slice(0, 10);
+      return wcISTDateString === istDateString;
+    });
+    return todayEntry ? todayEntry.wordCount : 0;
+  }
+  return 0;
 }
 async function fetchMonthTotalWordCount(employeeId, month, year) {
   const wordCounts = await fetchWordCounts(employeeId, month, year);
@@ -4383,6 +4399,16 @@ async function loadLeaveTracker() {
 }
 
 // Add Word Count Entry Section for Admin/HR
+function getTodayISTDateString() {
+  const now = new Date();
+  // IST offset in minutes: 5 hours 30 minutes = 330 minutes
+  const istOffset = 330;
+  // Get UTC time + IST offset
+  const istTime = new Date(now.getTime() + (istOffset * 60 * 1000));
+  // Format as YYYY-MM-DD
+  return istTime.toISOString().slice(0, 10);
+}
+
 function loadWordCountEntry() {
   setActive("btn-word-count-entry");
   mainContent.classList.add("center-flex");
@@ -4401,9 +4427,7 @@ function loadWordCountEntry() {
             </div>
             <div class="form-group" style="flex: 1; min-width: 250px;">
               <label>Date</label>
-              <input type="date" name="date" required value="${new Date()
-                .toISOString()
-                .slice(0, 10)}" />
+              <input type="date" name="date" required value="${getTodayISTDateString()}" />
             </div>
           </div>
           <div class="button-container">
@@ -4439,7 +4463,7 @@ function loadWordCountEntry() {
         msgDiv.style.color = "green";
         msgDiv.textContent = "Word count submitted successfully!";
         form.reset();
-        form.date.value = new Date().toISOString().slice(0, 10);
+        form.date.value = getTodayISTDateString();
       } else {
         msgDiv.style.color = "red";
         msgDiv.textContent = data.message || "Failed to submit word count.";
@@ -5947,5 +5971,157 @@ function attachAttendanceTrackerNameSearch() {
       }
     });
   }
+}
+// ... existing code ...
+
+// ... existing code ...
+  // Show/hide buttons based on role
+  const employee=localStorage.getItem("employee");
+  if (isAdminRole || (employee && employee.role === "hr_recruiter")) {
+    // Add Team Management button if not present
+    const sidebarNav = document.querySelector(".sidebar-nav");
+    if (!document.getElementById("btn-team-management")) {
+      const teamMgmtBtn = document.createElement("button");
+      teamMgmtBtn.id = "btn-team-management";
+      teamMgmtBtn.className = "sidebar-btn";
+      teamMgmtBtn.innerHTML = '<i class="fas fa-users-cog"></i> Team Management';
+      sidebarNav.appendChild(teamMgmtBtn);
+      teamMgmtBtn.addEventListener("click", () => {
+        setActive("btn-team-management");
+        loadTeamManagement();
+        if (window.innerWidth <= 768) {
+          document.getElementById("sidebar").classList.remove("show");
+          document.getElementById("sidebarOverlay").classList.remove("active");
+        }
+      });
+    }
+  }
+
+// ... existing code ...
+
+// --- Team Management Section ---
+let localTeams = [];
+let editingTeamId = null;
+async function loadTeamManagement() {
+  mainContent.innerHTML = `<div class="admin-content-section centered-section scrollable-form-container" id="team-management-section" style="max-width:900px;">
+    <h2>Team Management</h2>
+    <form id="createTeamForm" class="section-form" style="max-width:600px;margin-bottom:2rem;">
+      <div class="form-row" style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end;">
+        <div class="form-group" style="flex:1 1 220px;min-width:200px;">
+          <label>Team Name</label>
+          <input type="text" id="teamName" required placeholder="Enter Team Name" style="width:100%;min-width:0;" />
+        </div>
+        <div class="form-group" style="flex:1 1 220px;min-width:200px;">
+          <label>Team Leader</label>
+          <select id="teamLeader" required style="width:100%;min-width:0;"></select>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:1rem;">
+        <div class="form-group" style="flex:1 1 100%;min-width:200px;">
+          <label>Team Members</label>
+          <select id="teamMembers" multiple required style="width:100%;min-width:0;height:120px;"></select>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:1.5rem;">
+        <button type="submit" class="modern-btn" style="background:#43cea2;color:#fff;padding:10px 24px;border-radius:8px;font-weight:600;font-size:1.1rem;box-shadow:0 2px 8px rgba(67,206,162,0.10);border:none;transition:background 0.2s;">Create Team</button>
+      </div>
+    </form>
+    <div id="teamListContainer"></div>
+  </div>`;
+
+  // Fetch employees and filter for dropdowns
+  const token = localStorage.getItem("jwtToken");
+  const res = await fetch("/api/employees", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!data.success || !Array.isArray(data.employees)) return;
+  const employees = data.employees;
+  // Team Leader: only team_leader role
+  const leaders = employees.filter(e => e.role === "team_leader");
+  // Team Members: all except admin, hr_recruiter, team_leader
+  const members = employees.filter(e => !["admin","hr_admin","hr_recruiter","team_leader"].includes(e.role));
+  // Populate leader dropdown
+  const leaderSelect = document.getElementById("teamLeader");
+  leaderSelect.innerHTML = leaders.map(l => `<option value="${l.employeeId}">${l.firstName || l.name || l.employeeId}</option>`).join("");
+  // Populate members multi-select
+  const memberSelect = document.getElementById("teamMembers");
+  memberSelect.innerHTML = members.map(m => `<option value="${m.employeeId}">${m.firstName || m.name || m.employeeId}</option>`).join("");
+
+  // Handle team creation (local only)
+  document.getElementById("createTeamForm").onsubmit = function(e) {
+    e.preventDefault();
+    const teamName = document.getElementById("teamName").value.trim();
+    const teamLeaderId = document.getElementById("teamLeader").value;
+    const teamLeader = leaders.find(l => l.employeeId === teamLeaderId);
+    const memberIds = Array.from(document.getElementById("teamMembers").selectedOptions).map(opt => opt.value);
+    const teamMembers = members.filter(m => memberIds.includes(m.employeeId));
+    const teamId = `team_${localTeams.length + 1}`;
+    localTeams.push({ team_id: teamId, team_name: teamName, team_leader: teamLeader, team_members: teamMembers });
+    renderTeamList();
+    this.reset();
+  };
+
+  function renderTeamList() {
+    const container = document.getElementById("teamListContainer");
+    if (!localTeams.length) {
+      container.innerHTML = '<div style="color:#888;text-align:center;margin-top:2rem;">No teams created yet.</div>';
+      return;
+    }
+    container.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:1.5rem;">${localTeams.map(team => {
+      if (editingTeamId === team.team_id) {
+        // Edit mode
+        return `<div class=\"team-card\" style=\"background:#f8fafc;border-radius:14px;box-shadow:0 2px 8px rgba(67,206,162,0.10);padding:1.5rem 1.2rem;min-width:260px;max-width:320px;flex:1 1 260px;\">
+          <input type=\"text\" id=\"editTeamName_${team.team_id}\" value=\"${team.team_name}\" style=\"width:100%;margin-bottom:0.5rem;padding:6px;border-radius:6px;border:1px solid #ccc;\" />
+          <div style=\"margin-bottom:0.7rem;\"><strong>Leader:</strong> <select id=\"editTeamLeader_${team.team_id}\" style=\"width:100%;\">${leaders.map(l => `<option value=\"${l.employeeId}\" ${team.team_leader && l.employeeId === team.team_leader.employeeId ? 'selected' : ''}>${l.firstName || l.name || l.employeeId}</option>`).join('')}</select></div>
+          <div style=\"margin-bottom:0.7rem;\"><strong>Members:</strong><select id=\"editTeamMembers_${team.team_id}\" multiple style=\"width:100%;height:80px;\">${members.map(m => `<option value=\"${m.employeeId}\" ${team.team_members.some(tm => tm.employeeId === m.employeeId) ? 'selected' : ''}>${m.firstName || m.name || m.employeeId}</option>`).join('')}</select></div>
+          <div style=\"display:flex;gap:0.7rem;margin-top:1rem;\">
+            <button class=\"modern-btn\" style=\"background:#43cea2;color:#fff;padding:6px 18px;border-radius:7px;font-weight:600;font-size:1rem;box-shadow:0 2px 8px rgba(67,206,162,0.10);border:none;transition:background 0.2s;\" onclick=\"window.saveEditTeam('${team.team_id}')\">Save</button>
+            <button class=\"modern-btn\" style=\"background:#6c757d;color:#fff;padding:6px 18px;border-radius:7px;font-weight:600;font-size:1rem;box-shadow:0 2px 8px rgba(108,117,125,0.10);border:none;transition:background 0.2s;\" onclick=\"window.cancelEditTeam('${team.team_id}')\">Cancel</button>
+          </div>
+        </div>`;
+      } else {
+        // View mode
+        return `<div class=\"team-card\" style=\"background:#f8fafc;border-radius:14px;box-shadow:0 2px 8px rgba(67,206,162,0.10);padding:1.5rem 1.2rem;min-width:260px;max-width:320px;flex:1 1 260px;\">
+          <div style=\"font-size:1.2rem;font-weight:700;color:#764ba2;margin-bottom:0.5rem;\">${team.team_name}</div>
+          <div style=\"margin-bottom:0.7rem;\"><strong>Leader:</strong> ${team.team_leader ? (team.team_leader.firstName || team.team_leader.name || team.team_leader.employeeId) : '-'}</div>
+          <div style=\"margin-bottom:0.7rem;\"><strong>Members:</strong><ul style=\"margin:0 0 0 1.2rem;padding:0;\">${team.team_members.map(m => `<li>${m.firstName || m.name || m.employeeId}</li>`).join('')}</ul></div>
+          <div style=\"display:flex;gap:0.7rem;margin-top:1rem;\">
+            <button class=\"modern-btn\" style=\"background:#ffc107;color:#333;padding:6px 18px;border-radius:7px;font-weight:600;font-size:1rem;box-shadow:0 2px 8px rgba(255,193,7,0.10);border:none;transition:background 0.2s;\" onclick=\"window.editTeam('${team.team_id}')\">Edit</button>
+            <button class=\"modern-btn\" style=\"background:#dc3545;color:#fff;padding:6px 18px;border-radius:7px;font-weight:600;font-size:1rem;box-shadow:0 2px 8px rgba(220,53,69,0.10);border:none;transition:background 0.2s;\" onclick=\"window.deleteTeam('${team.team_id}')\">Delete</button>
+          </div>
+        </div>`;
+      }
+    }).join('')}</div>`;
+    // Attach global handlers for edit/save/cancel/delete
+    window.editTeam = function(teamId) {
+      editingTeamId = teamId;
+      renderTeamList();
+    };
+    window.cancelEditTeam = function(teamId) {
+      editingTeamId = null;
+      renderTeamList();
+    };
+    window.saveEditTeam = function(teamId) {
+      const teamIdx = localTeams.findIndex(t => t.team_id === teamId);
+      if (teamIdx === -1) return;
+      const newName = document.getElementById(`editTeamName_${teamId}`).value.trim();
+      const newLeaderId = document.getElementById(`editTeamLeader_${teamId}`).value;
+      const newLeader = leaders.find(l => l.employeeId === newLeaderId);
+      const newMemberIds = Array.from(document.getElementById(`editTeamMembers_${teamId}`).selectedOptions).map(opt => opt.value);
+      const newMembers = members.filter(m => newMemberIds.includes(m.employeeId));
+      localTeams[teamIdx].team_name = newName;
+      localTeams[teamIdx].team_leader = newLeader;
+      localTeams[teamIdx].team_members = newMembers;
+      editingTeamId = null;
+      renderTeamList();
+    };
+    window.deleteTeam = function(teamId) {
+      localTeams = localTeams.filter(t => t.team_id !== teamId);
+      editingTeamId = null;
+      renderTeamList();
+    };
+  }
+  renderTeamList();
 }
 // ... existing code ...
