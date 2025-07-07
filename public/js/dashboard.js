@@ -2600,6 +2600,10 @@ document.addEventListener("DOMContentLoaded", () => {
           }),
         });
         const data = await res.json();
+        if (data && data.error && data.error === 'ALREADY_LOGGED_IN') {
+          alert("You can't log-in today upto 12:00AM");
+          return;
+        }
         // Enable checkout
         checkoutBtn.disabled = false;
         checkoutInput.disabled = false;
