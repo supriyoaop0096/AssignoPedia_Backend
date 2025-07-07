@@ -1030,54 +1030,76 @@ app.post("/api/pay-slip", authenticateToken, requireHRorAdmin, async (req, res) 
 app.post("/api/attendance", authenticateToken, restrictAttendanceByIP, async (req, res) => {
   try {
     const { employeeId, employeeName, date, checkIn, checkOut } = req.body;
-    if (!employeeId || !date || !checkIn || !checkOut) {
-      return res.status(400).json({ success: false, message: "employeeId, date, checkIn, and checkOut are required." });
+    if (!employeeId || !date) {
+      return res.status(400).json({ success: false, message: "employeeId and date are required." });
     }
     // Always use IST for attendance date
     const istNow = getISTDate(new Date());
     const attendanceDate = new Date(istNow.getFullYear(), istNow.getMonth(), istNow.getDate());
-    const [hIn, mIn] = checkIn.split(":").map(Number);
-    let lateEntry = hIn > 11 || (hIn === 11 && mIn > 30);
-    const [hOut, mOut] = checkOut.split(":").map(Number);
-    let earlyCheckout = hOut < 18;
-    let lateCount = 0;
-    let earlyCheckoutCount = 0;
-    // Save attendance
     let att = await Attendance.findOne({ employeeId, date: attendanceDate });
+
+    // Helper to calculate late/early
+    function getLateEntry(checkIn) {
+      if (!checkIn) return false;
+      const [hIn, mIn] = checkIn.split(":").map(Number);
+      return hIn > 11 || (hIn === 11 && mIn > 30);
+    }
+    function getEarlyCheckout(checkOut) {
+      if (!checkOut) return false;
+      const [hOut, mOut] = checkOut.split(":").map(Number);
+      return hOut < 18;
+    }
+
+    // Calculate late/early flags
+    let lateEntry = false, earlyCheckout = false;
+    let lateCount = 0, earlyCheckoutCount = 0;
+    let newCheckIn = checkIn, newCheckOut = checkOut;
     if (att) {
-      // Attendance already submitted for today, do not overwrite
-      return res.json({
-        success: false,
-        message: "You have already checked in and checked out today. You can't check in or check out again until 12 AM (midnight).",
-        alreadySubmitted: true
-      });
-    } else {
-      // Calculate late count and early checkout count for the month BEFORE saving
+      // Update existing record
+      if (checkIn && !att.checkIn) att.checkIn = checkIn;
+      if (checkOut) att.checkOut = checkOut;
+      // Recalculate flags
+      lateEntry = getLateEntry(att.checkIn);
+      earlyCheckout = getEarlyCheckout(att.checkOut);
+      att.lateEntry = lateEntry;
+      att.earlyCheckout = earlyCheckout;
+      att.status = "Present";
+      // Calculate counts for the month
       const month = attendanceDate.getMonth();
       const year = attendanceDate.getFullYear();
       const monthStart = new Date(year, month, 1);
-      const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
-      // Count up to yesterday (exclude today)
       const prevLateCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lt: attendanceDate }, lateEntry: true });
       const prevEarlyCheckoutCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lt: attendanceDate }, earlyCheckout: true });
-      // If today is late/early, increment
       lateCount = lateEntry ? prevLateCount + 1 : prevLateCount;
       earlyCheckoutCount = earlyCheckout ? prevEarlyCheckoutCount + 1 : prevEarlyCheckoutCount;
+      att.lateCount = lateCount;
+      att.earlyCheckoutCount = earlyCheckoutCount;
+      await att.save();
+      return res.json({ success: true, lateEntry, earlyCheckout, lateCount, earlyCheckoutCount });
+    } else {
+      // New record (must have at least checkIn)
+      if (!checkIn) {
+        return res.status(400).json({ success: false, message: "Check-in required for new attendance record." });
+      }
+      lateEntry = getLateEntry(checkIn);
+      // Calculate counts for the month
+      const month = attendanceDate.getMonth();
+      const year = attendanceDate.getFullYear();
+      const monthStart = new Date(year, month, 1);
+      const prevLateCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lt: attendanceDate }, lateEntry: true });
+      lateCount = lateEntry ? prevLateCount + 1 : prevLateCount;
       att = new Attendance({
         employeeId,
         employeeName,
         date: attendanceDate,
         checkIn,
-        checkOut,
         lateEntry,
         lateCount,
-        earlyCheckout,
-        earlyCheckoutCount,
         status: "Present"
       });
       await att.save();
+      return res.json({ success: true, lateEntry, lateCount });
     }
-    return res.json({ success: true, lateEntry, earlyCheckout, lateCount, earlyCheckoutCount });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: "Server error" });

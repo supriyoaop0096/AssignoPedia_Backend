@@ -2580,55 +2580,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       // --- Button logic ---
-      checkinBtn.onclick = function () {
+      checkinBtn.onclick = async function () {
         if (checkinInput.value) return;
         const time24 = getCurrentTime24();
         const time12 = getCurrentTime12();
         checkinInput.value = time12;
-        // Store in localStorage
-        localStorage.setItem(ATTENDANCE_CHECKIN_KEY, time24);
-        localStorage.setItem(ATTENDANCE_DATE_KEY, getCurrentDateISO());
-        // Enable checkout
-          checkoutBtn.disabled = false;
-          checkoutInput.disabled = false;
-        // Update table
-          addOrUpdateTodayRow({
-            date: getCurrentDateISO(),
-          checkIn: time12,
-          checkOut: checkoutInput.value || '-',
-          status: 'Pending',
-        });
-      };
-
-      checkoutBtn.onclick = function () {
-        if (!checkinInput.value || checkoutInput.value) return;
-        const time24 = getCurrentTime24();
-        const time12 = getCurrentTime12();
-        checkoutInput.value = time12;
-        // Store in localStorage
-        localStorage.setItem(ATTENDANCE_CHECKOUT_KEY, time24);
-        // Enable submit
-        finalSubmitBtn.style.display = '';
-        // Update table
-        addOrUpdateTodayRow({
-          date: getCurrentDateISO(),
-          checkIn: checkinInput.value,
-          checkOut: time12,
-          status: 'Pending',
-        });
-      };
-
-      finalSubmitBtn.onclick = async function () {
-        const token = localStorage.getItem("jwtToken");
-        if (!token) {
-          window.location.href = "/login.html";
-          return;
-        }
-        const checkIn = localStorage.getItem(ATTENDANCE_CHECKIN_KEY);
-        const checkOut = localStorage.getItem(ATTENDANCE_CHECKOUT_KEY);
-        const date = localStorage.getItem(ATTENDANCE_DATE_KEY);
-        if (!checkIn || !checkOut || !date) return;
-        // Call backend with both times
+        // Send check-in to backend
         const res = await fetch('/api/attendance', {
           method: 'POST',
           headers: {
@@ -2638,35 +2595,93 @@ document.addEventListener("DOMContentLoaded", () => {
           body: JSON.stringify({
             employeeId: employee.employeeId,
             employeeName: employee.firstName + ' ' + (employee.lastName || ''),
-            date,
-            checkIn,
-            checkOut,
+            date: getCurrentDateISO(),
+            checkIn: time24
           }),
         });
         const data = await res.json();
-        if (data.alreadySubmitted) {
-          alert(data.message || 'You have already logged in and logged out today. You can\'t log in or log out again until 12 AM (midnight).');
-          // Clear the check-in and check-out input fields and hide the submit button
-          checkinInput.value = '';
-          checkoutInput.value = '';
-          finalSubmitBtn.style.display = 'none';
-          localStorage.removeItem(ATTENDANCE_CHECKIN_KEY);
-          localStorage.removeItem(ATTENDANCE_CHECKOUT_KEY);
-          localStorage.removeItem(ATTENDANCE_DATE_KEY);
-          return;
+        // Enable checkout
+        checkoutBtn.disabled = false;
+        checkoutInput.disabled = false;
+        // Fetch today's attendance from backend to ensure latest data
+        await fetchTodayAttendance();
+        // Show late count
+        lateCountDisplay.textContent = `Late Count (This Month): ${data.lateCount || 0}`;
+        let elCountSpan = document.getElementById("earlyCheckoutCountDisplay");
+        if (!elCountSpan) {
+          elCountSpan = document.createElement("span");
+          elCountSpan.id = "earlyCheckoutCountDisplay";
+          elCountSpan.style = "font-weight:bold;color:#ff9800;margin-left:1.5rem;";
+          lateCountDisplay.parentNode.appendChild(elCountSpan);
         }
-        if (data.success) {
-          // Clear localStorage
-          localStorage.removeItem(ATTENDANCE_CHECKIN_KEY);
-          localStorage.removeItem(ATTENDANCE_CHECKOUT_KEY);
-          localStorage.removeItem(ATTENDANCE_DATE_KEY);
-          checkinInput.value = '';
-          checkoutInput.value = '';
-          finalSubmitBtn.style.display = 'none';
-          // Reload table
-              loadAttendanceTable();
-          // Show late count and early checkout count
-          lateCountDisplay.textContent = `Late Count (This Month): ${data.lateCount || 0}`;
+        elCountSpan.textContent = '';
+      };
+
+      checkoutBtn.onclick = async function () {
+        if (!checkinInput.value || checkoutInput.value) return;
+        const time24 = getCurrentTime24();
+        const time12 = getCurrentTime12();
+        checkoutInput.value = time12;
+        // Send check-out to backend
+        const res = await fetch('/api/attendance', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            employeeId: employee.employeeId,
+            employeeName: employee.firstName + ' ' + (employee.lastName || ''),
+            date: getCurrentDateISO(),
+            checkOut: time24
+          }),
+        });
+        const data = await res.json();
+        // Fetch today's attendance from backend to ensure latest data
+        await fetchTodayAttendance();
+        // Show late and early checkout counts
+        lateCountDisplay.textContent = `Late Count (This Month): ${data.lateCount || 0}`;
+        let elCountSpan = document.getElementById("earlyCheckoutCountDisplay");
+        if (!elCountSpan) {
+          elCountSpan = document.createElement("span");
+          elCountSpan.id = "earlyCheckoutCountDisplay";
+          elCountSpan.style = "font-weight:bold;color:#ff9800;margin-left:1.5rem;";
+          lateCountDisplay.parentNode.appendChild(elCountSpan);
+        }
+        elCountSpan.textContent = `Early Logout (This Month): ${data.earlyCheckoutCount || 0}`;
+      };
+
+      // Remove finalSubmitBtn and localStorage logic for attendance
+      finalSubmitBtn.style.display = 'none';
+
+      // On section load, fetch today's attendance and update UI
+      async function fetchTodayAttendance() {
+        const today = new Date();
+        const month = today.getMonth() + 1;
+        const year = today.getFullYear();
+        const res = await fetch(`/api/attendance-summary?employeeId=${employee.employeeId}&month=${month}&year=${year}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.success && data.days) {
+          const todayISO = getCurrentDateISO();
+          const todayData = data.days.find(day => day.date === todayISO);
+          if (todayData) {
+            let checkInDisplay = todayData.checkIn ? todayData.checkIn + (todayData.lateEntry ? ' (L)' : '') : '-';
+            let checkOutDisplay = todayData.checkOut ? todayData.checkOut + (todayData.earlyCheckout ? ' (EC)' : '') : '-';
+            addOrUpdateTodayRow({
+              date: todayISO,
+              checkIn: checkInDisplay,
+              checkOut: checkOutDisplay,
+              status: todayData.attendanceStatus,
+            });
+            if (todayData.checkIn) checkinInput.value = todayData.checkIn + (todayData.lateEntry ? ' (L)' : '');
+            if (todayData.checkOut) checkoutInput.value = todayData.checkOut + (todayData.earlyCheckout ? ' (EC)' : '');
+            if (todayData.checkIn) {
+              checkoutBtn.disabled = false;
+              checkoutInput.disabled = false;
+            }
+            lateCountDisplay.textContent = `Late Count (This Month): ${data.lateCount || 0}`;
             let elCountSpan = document.getElementById("earlyCheckoutCountDisplay");
             if (!elCountSpan) {
               elCountSpan = document.createElement("span");
@@ -2675,34 +2690,10 @@ document.addEventListener("DOMContentLoaded", () => {
               lateCountDisplay.parentNode.appendChild(elCountSpan);
             }
             elCountSpan.textContent = `Early Logout (This Month): ${data.earlyCheckoutCount || 0}`;
-          } else {
-          alert(data.message || 'Attendance submit failed');
+          }
         }
-      };
-
-      // On section load, restore state
-      const savedDate = localStorage.getItem(ATTENDANCE_DATE_KEY);
-      const todayISO = getCurrentDateISO();
-      if (savedDate === todayISO) {
-        const savedCheckIn = localStorage.getItem(ATTENDANCE_CHECKIN_KEY);
-        const savedCheckOut = localStorage.getItem(ATTENDANCE_CHECKOUT_KEY);
-        if (savedCheckIn) {
-          checkinInput.value = new Date(todayISO + 'T' + savedCheckIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          checkoutBtn.disabled = false;
-          checkoutInput.disabled = false;
-        }
-        if (savedCheckOut) {
-          checkoutInput.value = new Date(todayISO + 'T' + savedCheckOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          finalSubmitBtn.style.display = '';
-        }
-        // Show in table
-          addOrUpdateTodayRow({
-          date: todayISO,
-          checkIn: checkinInput.value || '-',
-          checkOut: checkoutInput.value || '-',
-          status: 'Pending',
-        });
       }
+      fetchTodayAttendance();
 
       // --- Table logic ---
       function addOrUpdateTodayRow({ date, checkIn, checkOut, status }) {
