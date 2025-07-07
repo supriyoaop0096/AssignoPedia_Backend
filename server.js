@@ -182,14 +182,14 @@ const attendanceSchema = new mongoose.Schema(
 attendanceSchema.index({ employeeId: 1, date: 1 }, { unique: true });
 const Attendance = conn.model("Attendance", attendanceSchema);
 // const attendanceData = {
-//   employeeId: "AOP0096",
-//   employeeName: "Abhra Das",
-//   date: "2025-07-03T00:00:00.000+00:00",
+//   employeeId: "AOP0036",
+//   employeeName: "Hemika Mondal",
+//   date: "2025-07-02T00:00:00.000+00:00",
 //   status: "Present",
 //   checkIn: "11:27",
-//   checkOut: "19:05",
+//   checkOut: "18:25",
 //   lateEntry: false,
-//   lateCount: 1,
+//   lateCount: 0,
 //   earlyCheckout: false,
 //   earlyCheckoutCount: 0,
 //   createdAt: new Date(),
@@ -228,6 +228,8 @@ const notificationSchema = new mongoose.Schema(
     isForAll: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now },
     readBy: { type: [String], default: [] }, // Array of employeeIds who have read
+    comments: { type: String }, // <-- add this
+    reason: { type: String },   // <-- add this
   },
   { collection: "Notifications", timestamps: true }
 );
@@ -844,7 +846,9 @@ app.post(
             senderId: employeeId,
             senderName: name,
             recipientId: recipient.employeeId,
-            isForAll: false
+            isForAll: false,
+            comments, // <-- add this
+            reason,   // <-- add this
           });
           await notification.save();
           if (recipient.email) {
@@ -921,7 +925,9 @@ app.patch(
         senderId: req.user.employeeId,
         senderName: req.user.name || `${req.user.firstName} ${req.user.lastName}`,
         recipientId: leave.employeeId,
-        isForAll: false
+        isForAll: false,
+        comments: leave.comments, // <-- add this
+        reason: leave.reason,      // <-- add this
       });
       await notification.save();
       const employee = await Employee.findOne({ employeeId: leave.employeeId });
@@ -1199,6 +1205,11 @@ app.post("/api/word-count", authenticateToken, requireHRorAdminOrTeamLeader, asy
       return res
         .status(400)
         .json({ success: false, message: "employeeId, date, and wordCount are required." });
+    }
+    // --- Employee existence check ---
+    const employee = await Employee.findOne({ employeeId });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee ID not found. Word count not recorded." });
     }
     // Normalize to IST midnight
     const inputDate = new Date(date);
@@ -1837,7 +1848,9 @@ app.patch("/api/leave-requests/:id/approve", authenticateToken, requireHRorAdmin
       senderId: req.user.employeeId,
       senderName: req.user.name || `${req.user.firstName} ${req.user.lastName}`,
       recipientId: leave.employeeId,
-      isForAll: false
+      isForAll: false,
+      comments: leave.comments, // <-- add this
+      reason: leave.reason,      // <-- add this
     });
     await notification.save();
     const employee = await Employee.findOne({ employeeId: leave.employeeId });
@@ -1891,7 +1904,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // Search employees by name (admin/HR only)
-app.get("/api/employees/search", authenticateToken, requireHRorAdmin, async (req, res) => {
+app.get("/api/employees/search", authenticateToken, requireHRorAdminOrTeamLeader, async (req, res) => {
   try {
     const { name } = req.query;
     if (!name || name.trim().length < 2) {
@@ -1914,3 +1927,194 @@ app.get("/api/employees/search", authenticateToken, requireHRorAdmin, async (req
   }
 });
 
+// --- Team Management Schema ---
+const teamSchema = new mongoose.Schema({
+  team_name: { type: String, required: true, unique: true },
+  team_leader: { type: String, required: true }, // employeeId
+  team_members: [{ type: String, required: true }], // array of employeeIds
+}, { timestamps: true });
+const Team = conn.model("Team", teamSchema);
+
+// --- Team Management API ---
+const TEAM_MEMBER_EXCLUDE_ROLES = ["admin","hr_admin","hr_recruiter","team_leader","senior_writer","bdm"];
+
+// Middleware: Only admin/HR can manage teams
+function requireAdminOrHR(req, res, next) {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ success: false, message: 'No token' });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "secretkey");
+    if (["admin","hr_admin","hr_recruiter","hr_manager","hr_executive"].includes(decoded.role)) {
+      req.user = decoded;
+      return next();
+    }
+    return res.status(403).json({ success: false, message: 'Forbidden' });
+  } catch (err) {
+    return res.status(401).json({ success: false, message: 'Invalid token' });
+  }
+}
+
+// Create Team
+app.post('/api/teams', requireAdminOrHR, async (req, res) => {
+  try {
+    const { team_name, team_leader, team_members } = req.body;
+    if (!team_name || !team_leader || !Array.isArray(team_members) || !team_members.length) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+    // Ensure unique team name
+    if (await Team.findOne({ team_name })) {
+      return res.status(409).json({ success: false, message: 'Team name already exists' });
+    }
+    // Ensure no member is in another team
+    const allTeams = await Team.find();
+    const assignedIds = new Set(allTeams.flatMap(t => t.team_members));
+    for (const memberId of team_members) {
+      if (assignedIds.has(memberId)) {
+        return res.status(409).json({ success: false, message: `Member ${memberId} already in another team` });
+      }
+    }
+    // Create team
+    const team = await Team.create({ team_name, team_leader, team_members });
+    res.json({ success: true, team });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Get all teams (with member details)
+app.get('/api/teams', requireAdminOrHR, async (req, res) => {
+  try {
+    const teams = await Team.find();
+    // Populate member details
+    const allEmployees = await Employee.find();
+    const teamsWithMembers = teams.map(team => ({
+      ...team.toObject(),
+      team_leader_details: allEmployees.find(e => e.employeeId === team.team_leader),
+      team_members_details: team.team_members.map(id => allEmployees.find(e => e.employeeId === id)).filter(Boolean)
+    }));
+    res.json({ success: true, teams: teamsWithMembers });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Update team
+app.put('/api/teams/:teamId', requireAdminOrHR, async (req, res) => {
+  try {
+    const { teamId } = req.params;
+    const { team_name, team_leader, team_members } = req.body;
+    if (!team_name || !team_leader || !Array.isArray(team_members) || !team_members.length) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+    // Ensure unique team name (except self)
+    if (await Team.findOne({ team_name, _id: { $ne: teamId } })) {
+      return res.status(409).json({ success: false, message: 'Team name already exists' });
+    }
+    // Ensure no member is in another team (except this one)
+    const allTeams = await Team.find({ _id: { $ne: teamId } });
+    const assignedIds = new Set(allTeams.flatMap(t => t.team_members));
+    for (const memberId of team_members) {
+      if (assignedIds.has(memberId)) {
+        return res.status(409).json({ success: false, message: `Member ${memberId} already in another team` });
+      }
+    }
+    const updated = await Team.findByIdAndUpdate(teamId, { team_name, team_leader, team_members }, { new: true });
+    res.json({ success: true, team: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Delete team
+app.delete('/api/teams/:teamId', requireAdminOrHR, async (req, res) => {
+  try {
+    const { teamId } = req.params;
+    await Team.findByIdAndDelete(teamId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Get available members (eligible and not assigned)
+app.get('/api/teams/available-members', requireAdminOrHR, async (req, res) => {
+  try {
+    const allEmployees = await Employee.find();
+    const eligible = allEmployees.filter(e => !TEAM_MEMBER_EXCLUDE_ROLES.includes(e.role));
+    const allTeams = await Team.find();
+    const assignedIds = new Set(allTeams.flatMap(t => t.team_members));
+    const available = eligible.filter(e => !assignedIds.has(e.employeeId));
+    res.json({ success: true, available });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// --- PUBLIC ENDPOINTS FOR ORG STRUCTURE (NO AUTH, NO SENSITIVE DATA) ---
+// GET: All employees (public, non-sensitive fields only)
+app.get('/api/employees/public', async (req, res) => {
+  try {
+    const employees = await Employee.find({}, 'employeeId firstName lastName role profileImage doj');
+    res.json({ success: true, employees });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET: All teams (public, with member/leader details, non-sensitive only)
+app.get('/api/teams/public', async (req, res) => {
+  try {
+    const teams = await Team.find();
+    const allEmployees = await Employee.find({}, 'employeeId firstName lastName role profileImage doj');
+    const teamsWithMembers = teams.map(team => ({
+      ...team.toObject(),
+      team_leader_details: allEmployees.find(e => e.employeeId === team.team_leader),
+      team_members_details: team.team_members.map(id => allEmployees.find(e => e.employeeId === id)).filter(Boolean)
+    }));
+    res.json({ success: true, teams: teamsWithMembers });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// --- Migration: Populate comments and reason in old leave request notifications ---
+// async function migrateLeaveRequestNotifications() {
+//   const Notification = conn.model("Notification");
+//   const LeaveRequest = conn.model("LeaveRequest");
+
+//   // Find notifications that look like leave requests and are missing comments/reason
+//   const leaveNotifs = await Notification.find({
+//     $and: [
+//       { $or: [
+//         { message: /leave request/i },
+//         { message: /has been approved/i }
+//       ]},
+//       { $or: [ { comments: { $exists: false } }, { comments: null } ] }
+//     ]
+//   });
+
+//   let updated = 0;
+//   for (const notif of leaveNotifs) {
+//     // Try to find the related leave request by employeeId and date range in the message
+//     let leaveReq = null;
+//     // Try to extract employeeId and date from the message
+//     const empIdMatch = notif.message.match(/\(([A-Z0-9]+)\)/);
+//     const fromDateMatch = notif.message.match(/from ([A-Za-z0-9 ,/-]+) to/i);
+//     if (empIdMatch) {
+//       const employeeId = empIdMatch[1];
+//       // Try to find the most recent leave request for this employee
+//       leaveReq = await LeaveRequest.findOne({ employeeId }).sort({ createdAt: -1 });
+//       // Optionally, you can further filter by date if you want to be more precise
+//     }
+//     if (leaveReq) {
+//       notif.comments = leaveReq.comments || "";
+//       notif.reason = leaveReq.reason || "";
+//       await notif.save();
+//       updated++;
+//     }
+//   }
+//   console.log(`Migration complete: Updated ${updated} leave request notifications with comments and reason.`);
+// }
+
+// --- To run the migration, uncomment the following line and restart your server ---
+// migrateLeaveRequestNotifications();

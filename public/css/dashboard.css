@@ -1396,7 +1396,7 @@ width:80vw;
 }
 .centered-section {
   margin: 0 auto;
-  max-width: 600px;
+  max-width: 1200px;
   width: 100%;
   box-shadow: 0 2px 16px rgba(67,206,162,0.10);
   overflow-y: auto;
@@ -1430,6 +1430,7 @@ width:80vw;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: #764ba2 #e0c3fc;
+  margin-top: 30px;
 }
 .dashboard-main-section::-webkit-scrollbar, #dashboardMainSection::-webkit-scrollbar {
   width: 8px;
@@ -1589,9 +1590,9 @@ width:80vw;
   border-radius: 18px;
   box-shadow: 0 8px 32px rgba(67,206,162,0.10), 0 3px 16px rgba(118,75,162,0.10);
   padding: 2.2rem 2.2rem 1.5rem 2.2rem;
-  max-width: 700px;
+  max-width: 1200px;
   margin: 2.5rem auto 0 auto;
-  width: 100%;
+  width: 100vw;
   color: #3a2c5c;
   position: relative;
 }
@@ -1862,12 +1863,15 @@ width:80vw;
     padding: 1rem 2rem;
     font-size: 1.05rem;
   }
+  #notifictionList{
+    width:600px;
+  }
 }
 
 @media (min-width: 1024px) and (max-width: 1366px) {
   /* iPad Pro */
   .notice-board-section {
-    max-width: 85vw;
+    max-width: 95vw;
     padding: 2rem 2.5rem 1.5rem 2.5rem;
   }
   .notice-actions {
@@ -1878,6 +1882,9 @@ width:80vw;
     padding: 1.1rem 2.2rem;
     font-size: 1.1rem;
   }
+  #notficationsList{
+  width:870px;
+}
 }
 
 /* Enhanced Hover Effects */
@@ -1909,6 +1916,9 @@ width:80vw;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
+#notficationsList{
+  width:870px;
+}
 
 @keyframes spin {
   0% { transform: rotate(0deg); }
@@ -1937,7 +1947,7 @@ width:80vw;
   max-height: 320px;
   overflow-y: auto;
   padding-right: 4px;
-  width:400px;
+  width:1000px;
 }
 #notificationsList::-webkit-scrollbar {
   width: 7px;
@@ -2132,6 +2142,274 @@ width:80vw;
   border-radius: 6px;
 }
 
+/* Team Management Styles */
+.team-management-section {
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 2.5rem 2rem;
+  margin: 2.5rem auto 0 auto;
+  box-sizing: border-box;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.13);
+  box-shadow: 0 8px 32px rgba(67, 206, 162, 0.18), 0 3px 16px rgba(118, 75, 162, 0.13);
+  width: 98vw;
+  max-width: 1200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+@media (max-width: 900px) {
+  .team-management-section {
+    max-height: 70vh;
+    padding: 1.2rem 0.7rem;
+  }
+}
+@media (max-width: 600px) {
+  .team-management-section {
+    max-height: 60vh;
+    padding: 0.7rem 0.2rem;
+    border-radius: 12px;
+  }
+}
+
+/* Team Member Selection Styles */
+.team-member-selection {
+  max-height: 120px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.5rem;
+  background: #fff;
+}
+
+.team-member-selection::-webkit-scrollbar {
+  width: 6px;
+}
+
+.team-member-selection::-webkit-scrollbar-thumb {
+  background: #764ba2;
+  border-radius: 3px;
+}
+
+.team-member-selection::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.team-member-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+  padding: 0.2rem 0;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.team-member-item:hover {
+  background-color: #f8f9fa;
+}
+
+.team-member-item input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+  accent-color: #dc3545;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.team-member-item label {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #333;
+  cursor: pointer;
+  flex: 1;
+  user-select: none;
+  padding-left: 2px;
+  line-height: 1.2;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-selection-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.team-selection-btn {
+  background: linear-gradient(90deg, #6c757d, #495057);
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 5px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  box-shadow: 0 2px 6px rgba(108, 117, 125, 0.10);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.team-selection-btn:hover {
+  background: linear-gradient(90deg, #495057, #6c757d);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(108, 117, 125, 0.15);
+}
+
+.team-remove-btn {
+  background: linear-gradient(90deg, #dc3545, #ff7675);
+  color: #fff;
+  padding: 4px 14px;
+  border-radius: 7px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  box-shadow: 0 2px 8px rgba(220, 53, 69, 0.10);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 0.5rem;
+}
+
+.team-remove-btn:hover {
+  background: linear-gradient(90deg, #ff7675, #dc3545);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.15);
+}
+
+.team-creation-section {
+  background: rgba(255,255,255,0.13) !important;
+  backdrop-filter: blur(14px);
+  border: 1.5px solid rgba(255,255,255,0.18);
+  box-shadow: 0 8px 32px rgba(67,206,162,0.18);
+}
+
+.team-creation-section h3 {
+  color: #764ba2;
+  font-size: 1.4rem;
+  margin-bottom: 1.5rem;
+}
+
+.team-creation-section .form-group {
+  margin-bottom: 1.2rem;
+}
+
+.team-creation-section label {
+  color: #800000;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+.team-creation-section input,
+.team-creation-section select {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.team-creation-section input:focus,
+.team-creation-section select:focus {
+  outline: none;
+  border-color: #764ba2;
+  background: rgba(255,255,255,0.15);
+  box-shadow: 0 0 0 2px rgba(118, 75, 162, 0.2);
+}
+
+.team-creation-section input::placeholder {
+  color: rgba(255,255,255,0.6);
+}
+
+.team-creation-section select option {
+  background: #333;
+  color: #fff;
+}
+
+.teams-list-section h3 {
+  color: #764ba2;
+  font-size: 1.4rem;
+  margin-bottom: 1.5rem;
+}
+
+.team-card {
+  background: rgba(255,255,255,0.13) !important;
+  backdrop-filter: blur(14px);
+  border: 1.5px solid rgba(255,255,255,0.18);
+  box-shadow: 0 8px 32px rgba(67,206,162,0.18);
+  transition: all 0.3s ease;
+}
+
+.team-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(67,206,162,0.25);
+}
+
+.team-card input,
+.team-card select {
+  background: rgba(255,255,255,0.9) !important;
+  color: #333 !important;
+  border: 1px solid #ddd;
+}
+
+.team-card input:focus,
+.team-card select:focus {
+  border-color: #764ba2;
+  box-shadow: 0 0 0 2px rgba(118, 75, 162, 0.2);
+}
+
+.modern-btn {
+  transition: all 0.3s ease;
+}
+
+.modern-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Responsive Design for Team Management */
+@media (max-width: 768px) {
+  .team-management-section {
+    padding: 1rem;
+  }
+  
+  .team-creation-section {
+    padding: 1rem !important;
+  }
+  
+  .team-card {
+    min-width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  .team-card .modern-btn {
+    padding: 0.6rem 1rem !important;
+    font-size: 0.9rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .team-creation-section h3,
+  .teams-list-section h3 {
+    font-size: 1.2rem;
+  }
+  
+  .team-creation-section input,
+  .team-creation-section select {
+    padding: 0.7rem 0.8rem;
+    font-size: 0.95rem;
+  }
+}
+
 .attendance-table {
   width: 100%;
   border-collapse: collapse;
@@ -2304,5 +2582,53 @@ flex-direction: column;
   }
   #notificationsList{
     width:250px;
+  }
+}
+
+/* Existing Teams Scrollable List */
+.teams-list-scroll {
+  max-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  padding-right: 8px;
+  margin-bottom: 1.5rem;
+}
+.teams-list-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.teams-list-scroll::-webkit-scrollbar-thumb {
+  background: #764ba2;
+  border-radius: 8px;
+}
+.teams-list-scroll::-webkit-scrollbar-track {
+  background: #e0c3fc;
+}
+@media (max-width: 900px) {
+  .teams-list-scroll {
+    max-height: 300px;
+  }
+}
+@media (max-width: 600px) {
+  .teams-list-scroll {
+    max-height: 200px;
+    gap: 0.7rem;
+    padding-right: 4px;
+  }
+}
+
+/* Team Edit Button Group: Column on desktop, row on mobile/tablet */
+.team-edit-btn-group {
+  display: flex;
+  gap: 0.2rem;
+  margin-top: 1rem;
+  flex-direction: row;
+}
+@media (min-width: 1025px) {
+  .team-edit-btn-group {
+    flex-direction: column;
+    gap: 0.7rem;
+    align-items: stretch;
   }
 }

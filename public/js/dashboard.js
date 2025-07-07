@@ -23,6 +23,9 @@ import socialMediaService from "./social-media-service.js";
    const ATTENDANCE_CHECKIN_KEY = 'attendanceCheckInTime';
    const ATTENDANCE_CHECKOUT_KEY = 'attendanceCheckOutTime';
    const ATTENDANCE_DATE_KEY = 'attendanceDate';
+   const TEAM_MEMBER_EXCLUDE_ROLES = [
+     'admin', 'hr_admin', 'hr_recruiter', 'team_leader', 'senior_writer', 'bdm'
+   ];
 window.approveLeaveRequest = async function (id) {
   try {
     const approveBtn = document.querySelector(`button.approve-btn[onclick*="${id}"]`);
@@ -102,6 +105,121 @@ window.rejectLeaveRequest = async function (id) {
     if (rejectBtn) rejectBtn.disabled = false;
   }
 };
+  window.editTeam = function(teamId) {
+    editingTeamId = teamId;
+    renderTeamList();
+  };
+  window.removeMemberFromTeam = function(teamId, memberId) {
+    if (!window._editMembers || !window._editMembers[teamId]) return;
+    window._editMembers[teamId] = window._editMembers[teamId].filter(id => id !== memberId);
+    renderTeamList();
+  };
+  window.addMemberToTeam = function(teamId) {
+    const select = document.getElementById(`addMemberSelect_${teamId}`);
+    const memberId = select.value;
+    if (!memberId) return;
+    if (!window._editMembers) window._editMembers = {};
+    if (!window._editMembers[teamId]) window._editMembers[teamId] = [];
+
+    // Check if this member is already in another team (not this one)
+    const alreadyInTeam = localTeams.find(t => t._id !== teamId && t.team_members.includes(memberId));
+    if (alreadyInTeam) {
+      // Find the employee's name for a better message
+      const emp = allEmployees.find(e => e.employeeId === memberId);
+      const nameOrId = emp ? `${emp.firstName || emp.name || ''} (${emp.employeeId})` : memberId;
+      alert(`${nameOrId} is already in another team (${alreadyInTeam.team_name}).`);
+      return;
+    }
+
+    if (!window._editMembers[teamId].includes(memberId)) {
+      window._editMembers[teamId].push(memberId);
+    }
+    renderTeamList();
+  };
+  window.cancelEditTeam = function(teamId) {
+    window._editMembers = undefined;
+    editingTeamId = null;
+    renderTeamList();
+  };
+  window.saveEditTeam = async function(teamId) {
+    const teamIdx = localTeams.findIndex(t => t._id === teamId);
+    if (teamIdx === -1) return;
+    const newName = document.getElementById(`editTeamName_${teamId}`).value.trim();
+    const newLeaderId = document.getElementById(`editTeamLeader_${teamId}`).value;
+    const newMemberIds = (window._editMembers && window._editMembers[teamId]) ? window._editMembers[teamId] : [];
+    // Call backend to update
+    const token = localStorage.getItem("jwtToken");
+    const res = await fetch(`/api/teams/${teamId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ team_name: newName, team_leader: newLeaderId, team_members: newMemberIds })
+    });
+    const data = await res.json();
+    if (data.success) {
+      window._editMembers = undefined;
+      await loadTeamManagement();
+    } else {
+      alert(data.message || "Failed to update team");
+    }
+  };
+  window.deleteTeam = async function(teamId) {
+    if (!confirm("Are you sure you want to delete this team? This action cannot be undone.")) {
+      return;
+    }
+    const token = localStorage.getItem("jwtToken");
+    const res = await fetch(`/api/teams/${teamId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (data.success) {
+      window._editMembers = undefined;
+      editingTeamId = null;
+      await loadTeamManagement();
+    } else {
+      alert(data.message || "Failed to delete team");
+    }
+  };
+  window.removeSelectedMembersFromTeam = function(teamId) {
+    if (!window._editMembers || !window._editMembers[teamId]) return;
+    
+    // Get all checked checkboxes for this team
+    const checkboxes = document.querySelectorAll(`input[type="checkbox"][id^="remove_${teamId}_"]:checked`);
+    const selectedMemberIds = Array.from(checkboxes).map(cb => cb.value);
+    
+    if (selectedMemberIds.length === 0) {
+      alert("Please select at least one member to remove.");
+      return;
+    }
+    
+    if (!confirm(`Are you sure you want to remove ${selectedMemberIds.length} member(s) from this team?`)) {
+      return;
+    }
+    
+    // Remove selected members from the edit members array
+    window._editMembers[teamId] = window._editMembers[teamId].filter(id => !selectedMemberIds.includes(id));
+    
+    // Re-render the team list to update the UI
+    renderTeamList();
+  };
+  window.selectAllMembers = function(teamId) {
+    const checkboxes = document.querySelectorAll(`input[type="checkbox"][id^="remove_${teamId}_"]`);
+    checkboxes.forEach(cb => cb.checked = true);
+    updateRemoveButtonText(teamId);
+  };
+  window.deselectAllMembers = function(teamId) {
+    const checkboxes = document.querySelectorAll(`input[type="checkbox"][id^="remove_${teamId}_"]`);
+    checkboxes.forEach(cb => cb.checked = false);
+    updateRemoveButtonText(teamId);
+  };
+  window.updateRemoveButtonText = function(teamId) {
+    const checkboxes = document.querySelectorAll(`input[type="checkbox"][id^="remove_${teamId}_"]:checked`);
+    const removeBtn = document.querySelector(`button[onclick="window.removeSelectedMembersFromTeam('${teamId}')"]`);
+    if (removeBtn) {
+      const count = checkboxes.length;
+      removeBtn.textContent = count > 0 ? `Remove Selected (${count})` : 'Remove Selected';
+    }
+  };
 
 // Move these declarations to the top-level scope so all functions can access them
 let isAdminRole = false;
@@ -264,7 +382,38 @@ document.addEventListener("DOMContentLoaded", () => {
     sidebarNav.insertBefore(leaveApprovalBtn, document.getElementById("btn-stats"));
 
     // Add event listener for leave approval button
-    leaveApprovalBtn.onclick = loadLeaveApproval;
+    leaveApprovalBtn.addEventListener("click", () => {
+      loadLeaveApproval();
+      if (window.innerWidth <= 768) {
+        document.getElementById("sidebar").classList.remove("show");
+        document.getElementById("sidebarOverlay").classList.remove("active");
+      }
+    });
+
+    // Add Team Management button for admin roles
+    if (!document.getElementById("btn-team-management")) {
+      const teamMgmtBtn = document.createElement("button");
+      teamMgmtBtn.id = "btn-team-management";
+      teamMgmtBtn.className = "sidebar-btn";
+      teamMgmtBtn.innerHTML = '<i class="fas fa-users-cog"></i> Team Management';
+      
+      // Insert before btn-stats if it exists, otherwise append to the end
+      const statsBtn = document.getElementById("btn-stats");
+      if (statsBtn) {
+        sidebarNav.insertBefore(teamMgmtBtn, statsBtn);
+      } else {
+        sidebarNav.appendChild(teamMgmtBtn);
+      }
+      
+      teamMgmtBtn.addEventListener("click", () => {
+        setActive("btn-team-management");
+        loadTeamManagement();
+        if (window.innerWidth <= 768) {
+          document.getElementById("sidebar").classList.remove("show");
+          document.getElementById("sidebarOverlay").classList.remove("active");
+        }
+      });
+    }
 
   } else if (isHRRole) {
     // HR Recruiter: Show HR features
@@ -277,6 +426,32 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Add HR-specific buttons to sidebar
     const sidebarNav = document.querySelector(".sidebar-nav");
+
+
+    if (!document.getElementById("btn-organization-structure")) {
+      const sidebarNav = document.querySelector(".sidebar-nav");
+      const orgBtn = document.createElement("button");
+      orgBtn.id = "btn-organization-structure";
+      orgBtn.className = "sidebar-btn";
+      orgBtn.innerHTML = '<i class="fas fa-sitemap"></i> Organization Structure';
+      // Insert before Team Management if exists, else before Employee Stats
+      const teamMgmtBtn = document.getElementById("btn-team-management");
+      const statsBtn = document.getElementById("btn-stats");
+      if (teamMgmtBtn) {
+        sidebarNav.insertBefore(orgBtn, teamMgmtBtn);
+      } else if (statsBtn) {
+        sidebarNav.insertBefore(orgBtn, statsBtn);
+      } else {
+        sidebarNav.appendChild(orgBtn);
+      }
+      orgBtn.addEventListener("click", () => {
+        loadOrganizationStructure();
+        if (window.innerWidth <= 768) {
+          document.getElementById("sidebar").classList.remove("show");
+          document.getElementById("sidebarOverlay").classList.remove("active");
+        }
+      });
+    }
     
     // Add Notice Board button
     if (!document.getElementById("btn-notice-board")) {
@@ -350,7 +525,38 @@ document.addEventListener("DOMContentLoaded", () => {
     sidebarNav.insertBefore(leaveApprovalBtn, document.getElementById("btn-stats"));
 
     // Add event listener for leave approval button
-    leaveApprovalBtn.onclick = loadLeaveApproval;
+    leaveApprovalBtn.addEventListener("click", () => {
+      loadLeaveApproval();
+      if (window.innerWidth <= 768) {
+        document.getElementById("sidebar").classList.remove("show");
+        document.getElementById("sidebarOverlay").classList.remove("active");
+      }
+    });
+
+    // Add Team Management button for HR roles
+    if (!document.getElementById("btn-team-management")) {
+      const teamMgmtBtn = document.createElement("button");
+      teamMgmtBtn.id = "btn-team-management";
+      teamMgmtBtn.className = "sidebar-btn";
+      teamMgmtBtn.innerHTML = '<i class="fas fa-users-cog"></i> Team Management';
+      
+      // Insert before btn-stats if it exists, otherwise append to the end
+      const statsBtn = document.getElementById("btn-stats");
+      if (statsBtn) {
+        sidebarNav.insertBefore(teamMgmtBtn, statsBtn);
+      } else {
+        sidebarNav.appendChild(teamMgmtBtn);
+      }
+      
+      teamMgmtBtn.addEventListener("click", () => {
+        setActive("btn-team-management");
+        loadTeamManagement();
+        if (window.innerWidth <= 768) {
+          document.getElementById("sidebar").classList.remove("show");
+          document.getElementById("sidebarOverlay").classList.remove("active");
+        }
+      });
+    }
 
   } else if (isBDMorTL) {
     // BDM/TL: Show limited features
@@ -1046,7 +1252,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="admin-content-section" id="add-employee-section">
         <h2>Add New Employee</h2>
         <div class="scrollable-form-container">
-          <form id="addEmployeeForm" class="section-form add-employee-flex-row">
+          <form id="addEmployeeForm" class="section-form add-employee-flex-row" style="height:50vh;">
             <div class="form-row">
               <div class="form-group">
                 <label>Employee ID</label>
@@ -1451,6 +1657,32 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Add Organization Structure button for all roles
+  const sidebarNav = document.querySelector(".sidebar-nav");
+  if (!document.getElementById("btn-organization-structure")) {
+    const orgBtn = document.createElement("button");
+    orgBtn.id = "btn-organization-structure";
+    orgBtn.className = "sidebar-btn";
+    orgBtn.innerHTML = '<i class="fas fa-sitemap"></i> Organization Structure';
+    // Insert before Team Management if exists, else before Employee Stats
+    const teamMgmtBtn = document.getElementById("btn-team-management");
+    const statsBtn = document.getElementById("btn-stats");
+    if (teamMgmtBtn) {
+      sidebarNav.insertBefore(orgBtn, teamMgmtBtn);
+    } else if (statsBtn) {
+      sidebarNav.insertBefore(orgBtn, statsBtn);
+    } else {
+      sidebarNav.appendChild(orgBtn);
+    }
+    orgBtn.addEventListener("click", () => {
+      loadOrganizationStructure();
+      if (window.innerWidth <= 768) {
+        document.getElementById("sidebar").classList.remove("show");
+        document.getElementById("sidebarOverlay").classList.remove("active");
+      }
+    });
+  }
+
   // Load default section
   loadDashboard();
 
@@ -1537,8 +1769,8 @@ document.addEventListener("DOMContentLoaded", () => {
     setActive("btn-leave-approval");
     mainContent.innerHTML = `
       <div class="admin-content-section leave-approval-section" id="leave-approval-section">
-        <h2 style="align-self: flex-start; margin-bottom: 1.5rem;">Leave Approval Requests</h2>
-        <div class="leave-requests-container">
+        <h2 style="align-self: center; margin-bottom: 1.5rem;">Leave Approval Requests</h2>
+        <div class="leave-requests-container" style="width:80vw;">
           <div class="filters">
             <select id="statusFilter" class="filter-select">
               <option value="all">All Status</option>
@@ -1548,13 +1780,14 @@ document.addEventListener("DOMContentLoaded", () => {
             </select>
             <input type="text" id="employeeFilter" class="filter-input" placeholder="Search by Employee ID or Name">
           </div>
-          <div class="leave-requests-table">
+          <div class="leave-requests-table" style="height:50vh;width:100%;">
             <table>
               <thead>
                 <tr>
                   <th>Employee ID</th>
                   <th>Name</th>
                   <th>Reason</th>
+                  <th>Comments</th>
                   <th>Leave Count</th>
                   <th>From Date</th>
                   <th>To Date</th>
@@ -1564,7 +1797,7 @@ document.addEventListener("DOMContentLoaded", () => {
               </thead>
               <tbody id="leaveRequestsBody">
                 <tr>
-                  <td colspan="8" class="loading">Loading leave requests...</td>
+                  <td colspan="9" class="loading">Loading leave requests...</td>
                 </tr>
               </tbody>
             </table>
@@ -1711,14 +1944,14 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         document.getElementById("leaveRequestsBody").innerHTML = `
           <tr>
-            <td colspan="8" class="error">Failed to load leave requests</td>
+            <td colspan="9" class="error">Failed to load leave requests</td>
           </tr>
         `;
       }
     } catch (err) {
       document.getElementById("leaveRequestsBody").innerHTML = `
         <tr>
-          <td colspan="8" class="error">Error loading leave requests</td>
+          <td colspan="9" class="error">Error loading leave requests</td>
         </tr>
       `;
     }
@@ -1738,21 +1971,34 @@ document.addEventListener("DOMContentLoaded", () => {
     if (requests.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="8" class="no-data">No leave requests found</td>
+          <td colspan="9" class="no-data">No leave requests found</td>
         </tr>
       `;
       return;
     }
     const groups = groupLeaveRequestsByOriginal(requests);
     tbody.innerHTML = groups
-      .map((group) => {
+      .map((group, idx) => {
         const isMulti = group._group.length > 1;
         const main = group._group[0];
+        // Truncate comments if too long
+        let commentHtml = '-';
+        if (main.comments && main.comments.trim()) {
+          const full = main.comments.trim();
+          if (full.length > 60) {
+            const short = full.slice(0, 60) + '...';
+            const commentId = `comment-toggle-${main._id}-${idx}`;
+            commentHtml = `<span id="${commentId}" class="truncated-comment">${short} <a href="#" class="read-more-link" data-full="${encodeURIComponent(full)}" data-short="${encodeURIComponent(short)}" onclick="toggleComment('${commentId}', this); return false;">Read more</a></span>`;
+          } else {
+            commentHtml = full;
+          }
+        }
         return `
         <tr data-id="${main._id}" data-status="${main.status}">
           <td>${main.employeeId}</td>
           <td>${main.name}</td>
-          <td>${main.reason}</td>
+          <td>${main.reason || '-'}</td>
+          <td>${commentHtml}</td>
           <td>${main.leaveCount}</td>
           <td>${new Date(main.fromDate).toLocaleDateString()}</td>
           <td>${new Date(main.toDate).toLocaleDateString()}</td>
@@ -1784,7 +2030,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ${
           isMulti
             ? `
-          <tr class="breakdown-row" style="display:none;"><td colspan="8">
+          <tr class="breakdown-row" style="display:none;"><td colspan="9">
             <div class="breakdown-section">
               <strong>Month-wise Breakdown:</strong>
               <ul style="margin:0.5em 0 0 1.5em;">
@@ -1813,6 +2059,19 @@ document.addEventListener("DOMContentLoaded", () => {
       `;
       })
       .join("");
+  }
+
+  // Add this function globally to handle read more/less toggle
+  window.toggleComment = function(commentId, link) {
+    const span = document.getElementById(commentId);
+    if (!span) return;
+    const full = decodeURIComponent(link.getAttribute('data-full'));
+    const short = decodeURIComponent(link.getAttribute('data-short'));
+    if (link.textContent === 'Read more') {
+      span.innerHTML = `${full} <a href="#" class="read-more-link" data-full="${encodeURIComponent(full)}" data-short="${encodeURIComponent(short)}" onclick="toggleComment('${commentId}', this); return false;">Read less</a>`;
+    } else {
+      span.innerHTML = `${short} <a href="#" class="read-more-link" data-full="${encodeURIComponent(full)}" data-short="${encodeURIComponent(short)}" onclick="toggleComment('${commentId}', this); return false;">Read more</a>`;
+    }
   }
 
   // Function to filter leave requests
@@ -2530,20 +2789,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 });
-// Add this to your existing code where you handle the initial page load
-// document.addEventListener("DOMContentLoaded", () => {
-//   // ... existing code ...
-//   const token = localStorage.getItem("jwtToken");
-//   if (token) {
-//     const payload = JSON.parse(atob(token.split(".")[1]));
-//     const userRole = payload.role;
-
-//     // Show/hide buttons based on role
-//     document.getElementById("btn-attendance").style.display =
-//       userRole === "hr" || userRole === "junior_writer" || userRole === "bdm" || userRole === "team_lead" ? "block" : "none";
-//   }
-//   // ... existing code ...
-// });
 
 const hamburger = document.getElementById("hamburgerToggle");
 const sidebar = document.getElementById("sidebar");
@@ -3661,7 +3906,7 @@ function loadNoticeBoard() {
         <div id="recent-form-container">
           <form id="noticeBoardForm" class="section-form">
             <div class="form-group">
-              <label for="noticeMessage">Notice Message</label>
+              <label for="noticeMessage" style="color: #8C001A;font-weight:bold;font-size:1.2rem;">Notice Message</label>
               <textarea 
                 id="noticeMessage" 
                 name="noticeMessage" 
@@ -3880,99 +4125,6 @@ function loadNotifications() {
   injectProfileSidebar();
 }
 
-// async function loadNotificationsList() {
-//   const notices = JSON.parse(localStorage.getItem("notices") || "[]");
-//   const currentEmployee = JSON.parse(localStorage.getItem("employee"));
-//   const notificationsList = document.getElementById("notificationsList");
-
-//    Filter notifications for current user
-//   const userNotifications = notices.filter(
-//     (notice) => notice.isForAll || notice.recipientId === currentEmployee.employeeId
-//   );
-
-//   if (userNotifications.length === 0) {
-//     notificationsList.innerHTML = '<div class="no-notifications">No notifications found</div>';
-//     return;
-//   }
-
-//   const notificationsHtml = userNotifications
-//     .map((notice) => {
-//       const isUnread = !notice.readBy.includes(currentEmployee.employeeId);
-//       return `
-//         <div class="notice-item ${isUnread ? "unread" : ""}" data-notice-id="${notice.id}">
-//           <div class="notice-header">
-//             <span class="notice-sender">
-//               <i class="fas fa-user"></i>
-//               ${notice.senderName}
-//             </span>
-//             <span class="notice-date">${new Date(notice.createdAt).toLocaleString()}</span>
-//           </div>
-//           <div class="notice-message">${notice.message}</div>
-//           <div class="notice-badge">
-//             ${notice.isForAll ? "All Employees" : "Personal"}
-//           </div>
-//         </div>
-//       `;
-//     })
-//     .join("");
-
-//   notificationsList.innerHTML = notificationsHtml;
-
-//    Add click handlers to mark as read
-//   document.querySelectorAll(".notice-item").forEach((item) => {
-//     item.addEventListener("click", function () {
-//       const noticeId = this.dataset.noticeId;
-//       markNotificationAsRead(noticeId);
-//       this.classList.remove("unread");
-//     });
-//   });
-
-//    Clear notification badge when notifications are viewed
-//   clearNotificationBadge();
-// }
-
-// function markNotificationAsRead(noticeId) {
-//   const notices = JSON.parse(localStorage.getItem("notices") || "[]");
-//   const currentEmployee = JSON.parse(localStorage.getItem("employee"));
-
-//   const notice = notices.find((n) => n.id == noticeId);
-//   if (notice && !notice.readBy.includes(currentEmployee.employeeId)) {
-//     notice.readBy.push(currentEmployee.employeeId);
-//     localStorage.setItem("notices", JSON.stringify(notices));
-//   }
-// }
-
-// function updateNotificationBadge() {
-//   const notices = JSON.parse(localStorage.getItem("notices") || "[]");
-//   const currentEmployee = JSON.parse(localStorage.getItem("employee"));
-
-//   const unreadCount = notices.filter(
-//     (notice) =>
-//       (notice.isForAll || notice.recipientId === currentEmployee.employeeId) &&
-//      !notice.readBy.includes(currentEmployee.employeeId)
-//   ).length;
-
-//   const badge = document.getElementById("notificationBadge");
-//   if (badge) {
-//     if (unreadCount > 0) {
-//       badge.textContent = unreadCount > 99 ? "99+" : unreadCount;
-//       badge.style.display = "inline-block";
-//     } else {
-//       badge.style.display = "none";
-//     }
-//   }
-// }
-
-// function clearNotificationBadge() {
-//   const badge = document.getElementById("notificationBadge");
-//   if (badge) {
-//     badge.style.display = "none";
-//   }
-// }
-
-// Initialize notification badge on page load
-// updateNotificationBadge();
-
 // Add My Profile floating avatar button and sidebar
 function injectProfileSidebar() {
   // Remove any existing avatar/sidebar to prevent duplicates
@@ -4187,9 +4339,14 @@ async function loadLeaveTracker() {
   mainContent.classList.add("center-flex");
   mainContent.innerHTML = `
       <div class="admin-content-section centered-section scrollable-form-container" id="leave-tracker-section">
-        <h2>Leave Request Tracker</h2>
-        <form id="leaveTrackerForm" class="section-form" style="max-width:500px;margin-bottom:2rem;">
+        <h2 style="margin-bottom:30px;">Leave Request Tracker</h2>
+        <form id="leaveTrackerForm" class="section-form" style="max-width:1000px;margin-bottom:2rem;">
           <div class="form-row">
+            <div class="form-group">
+              <label>Search by Name</label>
+              <input type="text" id="leaveTrackerEmployeeName" placeholder="Type employee name..." autocomplete="off" />
+              <div id="leaveTrackerNameDropdown" class="search-dropdown" style="position:relative;"></div>
+            </div>
             <div class="form-group">
               <label>Employee ID</label>
               <input type="text" id="trackerEmployeeId" required placeholder="Enter Employee ID" />
@@ -4245,6 +4402,8 @@ async function loadLeaveTracker() {
       }
       </style>
     `;
+  // Attach name search dropdown logic for leave tracker
+  attachLeaveTrackerNameSearch();
   document.getElementById("leaveTrackerForm").onsubmit = async function (e) {
     e.preventDefault();
     const empId = document.getElementById("trackerEmployeeId").value.trim();
@@ -4398,6 +4557,49 @@ async function loadLeaveTracker() {
   injectProfileSidebar();
 }
 
+// Add this function at the bottom of the file or after similar attach*NameSearch functions
+function attachLeaveTrackerNameSearch() {
+  const nameInput = document.getElementById("leaveTrackerEmployeeName");
+  const idInput = document.getElementById("trackerEmployeeId");
+  const dropdown = document.getElementById("leaveTrackerNameDropdown");
+  let nameTimeout;
+  if (nameInput && idInput && dropdown) {
+    nameInput.addEventListener("input", function() {
+      clearTimeout(nameTimeout);
+      const value = this.value.trim();
+      dropdown.innerHTML = "";
+      if (value.length < 2) return;
+      nameTimeout = setTimeout(async () => {
+        const token = localStorage.getItem("jwtToken");
+        const res = await fetch(`/api/employees/search?name=${encodeURIComponent(value)}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.employees.length) {
+          dropdown.innerHTML = `<div style='position:absolute;z-index:1000;background:#fff;border:1px solid #ccc;width:100%;max-height:180px;overflow:auto;'>${data.employees.map(emp => {
+            const displayName = `${emp.firstName || emp.name || ''} ${emp.lastName || ''}`.trim();
+            return `<div class='dropdown-item' style='padding:8px;cursor:pointer;color:#8C001A;' data-id='${emp.employeeId}' data-name='${displayName.replace(/'/g, "&#39;")}' >${displayName} <span style='color:#764ba2;font-weight:bold;'>(${emp.employeeId})</span></div>`;
+          }).join('')}</div>`;
+          dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+            item.onclick = function(e) {
+              idInput.value = this.getAttribute('data-id');
+              nameInput.value = this.getAttribute('data-name');
+              dropdown.innerHTML = "";
+              e.stopPropagation();
+            };
+          });
+        }
+      }, 300);
+    });
+    // Hide dropdown on outside click
+    document.addEventListener('click', function(e) {
+      if (!dropdown.contains(e.target) && e.target !== nameInput) {
+        dropdown.innerHTML = "";
+      }
+    });
+  }
+}
+
 // Add Word Count Entry Section for Admin/HR
 function getTodayISTDateString() {
   const now = new Date();
@@ -4417,9 +4619,14 @@ function loadWordCountEntry() {
         <h2>Word Count Entry</h2>
         <form id="wordCountEntryForm" class="section-form add-employee-flex-row">
           <div class="form-row" style="flex-wrap: wrap; gap: 15px;">
+            <div class="form-group" style="flex: 1; min-width: 250px; position:relative;">
+              <label>Employee Name</label>
+              <input type="text" id="wordCountEmployeeName" autocomplete="off" placeholder="Type employee name..." style="width:100%;min-width:0;" />
+              <div id="wordCountNameDropdown" style="width:100%;position:absolute;z-index:1000;"></div>
+            </div>
             <div class="form-group" style="flex: 1; min-width: 250px;">
               <label>Employee ID</label>
-              <input type="text" name="employeeId" required placeholder="Enter Employee ID" />
+              <input type="text" name="employeeId" id="wordCountEmployeeId" required placeholder="Enter Employee ID" />
             </div>
             <div class="form-group" style="flex: 1; min-width: 250px;">
               <label>Today's Word Count</label>
@@ -4437,6 +4644,8 @@ function loadWordCountEntry() {
         </form>
       </div>
     `;
+  // Attach name search dropdown logic for word count entry
+  attachWordCountNameSearch();
   document.getElementById("wordCountEntryForm").onsubmit = async function (e) {
     e.preventDefault();
     const form = e.target;
@@ -4477,14 +4686,57 @@ function loadWordCountEntry() {
   injectProfileSidebar();
 }
 
+// --- Add this function for Word Count Entry name search ---
+function attachWordCountNameSearch() {
+  const nameInput = document.getElementById("wordCountEmployeeName");
+  const idInput = document.getElementById("wordCountEmployeeId");
+  const dropdown = document.getElementById("wordCountNameDropdown");
+  let nameTimeout;
+  if (nameInput && idInput && dropdown) {
+    nameInput.addEventListener("input", function() {
+      clearTimeout(nameTimeout);
+      const value = this.value.trim();
+      dropdown.innerHTML = "";
+      if (value.length < 2) return;
+      nameTimeout = setTimeout(async () => {
+        const token = localStorage.getItem("jwtToken");
+        const res = await fetch(`/api/employees/search?name=${encodeURIComponent(value)}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.employees.length) {
+          dropdown.innerHTML = `<div style='position:absolute;z-index:1000;background:#fff;border:1px solid #ccc;width:100%;max-height:180px;overflow:auto;'>${data.employees.map(emp => {
+            const displayName = `${emp.firstName || emp.name || ''} ${emp.lastName || ''}`.trim();
+            return `<div class='dropdown-item' style='padding:8px;cursor:pointer;color:#8C001A;' data-id='${emp.employeeId}' data-name='${displayName.replace(/'/g, "&#39;")}' >${displayName} <span style='color:#764ba2;font-weight:bold;'>(${emp.employeeId})</span></div>`;
+          }).join('')}</div>`;
+          dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+            item.onclick = function(e) {
+              idInput.value = this.getAttribute('data-id');
+              nameInput.value = this.getAttribute('data-name');
+              dropdown.innerHTML = "";
+              e.stopPropagation();
+            };
+          });
+        }
+      }, 300);
+    });
+    // Hide dropdown on outside click
+    document.addEventListener('click', function(e) {
+      if (!dropdown.contains(e.target) && e.target !== nameInput) {
+        dropdown.innerHTML = "";
+      }
+    });
+  }
+}
+
 // --- Attendance Tracker Section ---
 async function loadAttendanceTracker() {
   setActive("btn-attendance-tracker");
   mainContent.classList.add("center-flex");
   mainContent.innerHTML = `
       <div class="admin-content-section centered-section scrollable-form-container" id="attendance-tracker-section">
-        <h2>Attendance Tracker</h2>
-        <form id="attendanceTrackerForm" class="section-form" style="max-width:540px;margin-bottom:2rem;">
+        <h2 style="color: #8C001A;font-weight:bold;font-size:1.8rem;margin-bottom:25px;">Attendance Tracker</h2>
+        <form id="attendanceTrackerForm" class="section-form" style="max-width:1240px;width:90%;margin-bottom:2rem;">
           <div class="form-row" style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end;">
             <div class="form-group" style="flex:1 1 220px;min-width:200px;position:relative;">
               <label style="margin-bottom:6px;">Employee Name</label>
@@ -4899,11 +5151,16 @@ async function loadRecentNotices() {
     const currentEmployee = JSON.parse(localStorage.getItem("employee"));
     const noticesHtml = data.notifications
       .slice(0, 10)
-      .map(
-        (notice) => `
-        <div class="notice-item ${
-          !notice.readBy.includes(currentEmployee.employeeId) ? "unread" : ""
-        }" data-notice-id="${notice._id}">
+      .map((notice) => {
+        let extraDetails = '';
+        if (notice.reason) {
+          extraDetails += `<div style='margin-top:4px;font-size:0.97em;color:#5a3d8c;background:#f3eaff;padding:4px 8px;border-radius:6px;'><strong>Reason:</strong> ${notice.reason}</div>`;
+        }
+        if (notice.comments) {
+          extraDetails += `<div style='margin-top:2px;font-size:0.97em;color:#5a3d8c;background:#eafff3;padding:4px 8px;border-radius:6px;'><strong>Comments:</strong> ${notice.comments}</div>`;
+        }
+        return `
+        <div class="notice-item ${!notice.readBy.includes(currentEmployee.employeeId) ? "unread" : ""}" data-notice-id="${notice._id}">
           <div class="notice-header">
             <span class="notice-sender">
               <i class="fas fa-user"></i>
@@ -4912,12 +5169,13 @@ async function loadRecentNotices() {
             <span class="notice-date">${new Date(notice.createdAt).toLocaleString()}</span>
           </div>
           <div class="notice-message">${notice.message}</div>
+          ${extraDetails}
           <div class="notice-badge">
             ${notice.isForAll ? "All Employees" : `To: ${notice.recipientId}`}
           </div>
         </div>
-      `
-      )
+      `;
+      })
       .join("");
     recentNoticesList.innerHTML = noticesHtml;
   } catch (err) {
@@ -4943,6 +5201,13 @@ async function loadNotificationsList() {
     const notificationsHtml = data.notifications
       .map((notice) => {
         const isUnread = !notice.readBy.includes(currentEmployee.employeeId);
+        let extraDetails = '';
+        if (notice.reason) {
+          extraDetails += `<div style='margin-top:4px;font-size:0.97em;color:#5a3d8c;background:#f3eaff;padding:4px 8px;border-radius:6px;'><strong>Reason:</strong> ${notice.reason}</div>`;
+        }
+        if (notice.comments) {
+          extraDetails += `<div style='margin-top:2px;font-size:0.97em;color:#5a3d8c;background:#eafff3;padding:4px 8px;border-radius:6px;'><strong>Comments:</strong> ${notice.comments}</div>`;
+        }
         return `
           <div class="notice-item ${isUnread ? "unread" : ""}" data-notice-id="${notice._id}">
             <div class="notice-header">
@@ -4953,6 +5218,7 @@ async function loadNotificationsList() {
               <span class="notice-date">${new Date(notice.createdAt).toLocaleString()}</span>
             </div>
             <div class="notice-message">${notice.message}</div>
+            ${extraDetails}
             <div class="notice-badge">
               ${notice.isForAll ? "All Employees" : "Personal"}
             </div>
@@ -5029,168 +5295,8 @@ updateNotificationBadge();
 
 // --- Digital ID Card and Edit Profile in Main Content ---
 function showProfileInMainContent() {
-//   // console.log("showProfileInMainContent called"); // Debug log
-//   // try {
-//   //   const emp = JSON.parse(localStorage.getItem("employee"));
-//   //   console.log("Employee data:", emp); // Debug log
-//   //   const mainContent = document.getElementById("mainContent");
-//   //   console.log("Main content element:", mainContent); // Debug log
-//   //   // Save previous content to restore on clear
-//   //   const previousContent = mainContent.innerHTML;
-//   //   console.log("About to set innerHTML"); // Debug log
-//   //   mainContent.innerHTML = `
-//   //   <div class="digital-id-card-outer">
-//   //     <div class="digital-id-card-modern">
-//   //       <div class="digital-id-card-header">
-//   //         <img src="images/logo.png" alt="Company Logo" class="digital-id-card-logo" />
-//   //         <span class="digital-id-card-company">AssignoPedia</span>
-//   //       </div>
-//   //       <div class="digital-id-card-photo-section">
-//   //         <img src="${emp && emp._id ? `/api/employees/${emp._id}/profile-image` : "/images/logo.png"}" alt="Profile" class="digital-id-card-photo" onerror="this.src='/images/logo.png'" />
-//   //       </div>
-//   //       <div class="digital-id-card-info">
-//   //         <div class="digital-id-card-row"><span class="digital-id-label">Name:</span> <span>${emp.firstName || ""} ${emp.lastName || ""}</span></div>
-//   //         <div class="digital-id-card-row"><span class="digital-id-label">Employee ID:</span> <span>${emp.employeeId}</span></div>
-//   //         <div class="digital-id-card-row"><span class="digital-id-label">Role:</span> <span>${emp.role}</span></div>
-//   //         <div class="digital-id-card-row"><span class="digital-id-label">Email:</span> <span>${emp.email || "-"}</span></div>
-//   //         <div class="digital-id-card-row"><span class="digital-id-label">Mobile:</span> <span>${emp.mobile || "-"}</span></div>
-//   //         <div class="digital-id-card-row"><span class="digital-id-label">Date of Joining:</span> <span>${emp.doj ? new Date(emp.doj).toLocaleDateString() : "-"}</span></div>
-//   //         <div class="digital-id-card-row"><span class="digital-id-label">Address:</span> <span>${emp.address || "-"}</span></div>
-//   //         <div class="digital-id-card-row"><span class="digital-id-label">ID Card:</span> <span>${emp.idCardType ? emp.idCardType.toUpperCase() : "-"} ${emp.idCardNumber || ""}</span></div>
-//   //       </div>
-//   //       <button id="clearDigitalCardBtn" class="digital-id-clear-btn">Clear</button>
-//   //     </div>
-//   //   </div>
-//   //   <style>
-//   //     .digital-id-card-outer {
-//   //       display: flex;
-//   //       justify-content: center;
-//   //       align-items: center;
-//   //       min-height: 70vh;
-//   //       background: linear-gradient(135deg, #f8fafc 0%, #e0c3fc 100%);
-//   //       padding: 2rem 0;
-//   //     }
-//   //     .digital-id-card-modern {
-//   //       background: linear-gradient(135deg, #fff 60%, #e0c3fc 100%);
-//   //       border-radius: 22px;
-//   //       box-shadow: 0 8px 32px rgba(67,206,162,0.13), 0 3px 16px rgba(118,75,162,0.13);
-//   //       padding: 2.5rem 2.2rem 2.2rem 2.2rem;
-//   //       max-width: 390px;
-//   //       width: 100%;
-//   //       color: #2d2350;
-//   //       position: relative;
-//   //       display: flex;
-//   //       flex-direction: column;
-//   //       align-items: center;
-//   //       border: 2.5px solid #764ba2;
-//   //       font-family: 'Poppins', 'Segoe UI', Arial, sans-serif;
-//   //       animation: fadeInCard 0.7s cubic-bezier(.77,0,.18,1);
-//   //     }
-//   //     @keyframes fadeInCard {
-//   //       from { opacity: 0; transform: translateY(30px); }
-//   //       to { opacity: 1; transform: none; }
-//   //     }
-//   //     .digital-id-card-header {
-//   //       display: flex;
-//   //       align-items: center;
-//   //       gap: 0.7rem;
-//   //       margin-bottom: 1.2rem;
-//   //     }
-//   //     .digital-id-card-logo {
-//   //       width: 54px;
-//   //       height: 54px;
-//   //       object-fit: contain;
-//   //       border-radius: 10px;
-//   //       background: #fff;
-//   //       border: 1.5px solid #764ba2;
-//   //       box-shadow: 0 2px 8px rgba(67,206,162,0.10);
-//   //     }
-//   //     .digital-id-card-company {
-//   //       font-size: 1.7rem;
-//   //       font-weight: bold;
-//   //       color: #764ba2;
-//   //       letter-spacing: 1px;
-//   //       font-family: 'Pacifico', 'Poppins', cursive, sans-serif;
-//   //       text-shadow: 0 2px 8px rgba(67,206,162,0.10);
-//   //     }
-//   //     .digital-id-card-photo-section {
-//   //       display: flex;
-//   //       justify-content: center;
-//   //       align-items: center;
-//   //       margin-bottom: 1.2rem;
-//   //     }
-//   //     .digital-id-card-photo {
-//   //       width: 100px;
-//   //       height: 100px;
-//   //       border-radius: 50%;
-//   //       object-fit: cover;
-//   //       border: 3px solid #764ba2;
-//   //       box-shadow: 0 2px 12px rgba(118,75,162,0.13);
-//   //       background: #fff;
-//   //     }
-//   //     .digital-id-card-info {
-//   //       width: 100%;
-//   //       margin-top: 0.5rem;
-//   //       margin-bottom: 1.5rem;
-//   //     }
-//   //     .digital-id-card-row {
-//   //       display: flex;
-//   //       justify-content: space-between;
-//   //       margin-bottom: 0.7rem;
-//   //       font-size: 1.13rem;
-//   //       font-family: 'Poppins', 'Segoe UI', Arial, sans-serif;
-//   //       letter-spacing: 0.01em;
-//   //     }
-//   //     .digital-id-label {
-//   //       font-weight: 600;
-//   //       color: #764ba2;
-//   //       margin-right: 0.5rem;
-//   //       font-family: 'Poppins', 'Segoe UI', Arial, sans-serif;
-//   //     }
-//   //     .digital-id-clear-btn {
-//   //       margin-top: 1.7rem;
-//   //       padding: 12px 38px;
-//   //       font-size: 1.13rem;
-//   //       background: linear-gradient(90deg, #764ba2, #43cea2);
-//   //       color: #fff;
-//   //       border: none;
-//   //       border-radius: 12px;
-//   //       box-shadow: 0 2px 8px rgba(67,206,162,0.13);
-//   //       font-weight: 600;
-//   //       cursor: pointer;
-//   //       transition: background 0.2s, box-shadow 0.2s;
-//   //       font-family: 'Poppins', 'Segoe UI', Arial, sans-serif;
-//   //     }
-//   //     .digital-id-clear-btn:hover {
-//   //       background: linear-gradient(90deg, #43cea2, #764ba2);
-//   //       box-shadow: 0 4px 16px rgba(67,206,162,0.18);
-//   //     }
-//   //     @media (max-width: 600px) {
-//   //       .digital-id-card-modern {
-//   //         padding: 1.2rem 0.5rem;
-//   //         max-width: 99vw;
-//   //       }
-//   //       .digital-id-card-header { gap: 0.4rem; }
-//   //       .digital-id-card-logo { width: 38px; height: 38px; }
-//   //       .digital-id-card-company { font-size: 1.1rem; }
-//   //       .digital-id-card-photo { width: 60px; height: 60px; }
-//   //       .digital-id-card-row { font-size: 0.98rem; }
-//   //     }
-//   //   </style>
-//   // `;
-//   // // Add clear button logic
-//   // const clearBtn = document.getElementById("clearDigitalCardBtn");
-//   // if (clearBtn) {
-//   //   clearBtn.onclick = function () {
-//   //     mainContent.innerHTML = previousContent;
-//   //   };
-//   // }
-//   // console.log("showProfileInMainContent completed successfully"); // Debug log
-//   // } catch (error) {
-//   //   console.error("Error in showProfileInMainContent:", error); // Debug log
-//   // }
-//   console.log("🔍 showProfileInMainContent() was triggered");
- mainContent = document.getElementById("mainContent");
+  console.log("🔍 showProfileInMainContent() was triggered");
+  mainContent = document.getElementById("mainContent");
   const employee = JSON.parse(localStorage.getItem("employee"));
   if (!employee) return;
 
@@ -5222,10 +5328,9 @@ function showProfileInMainContent() {
 
   mainContent.innerHTML = cardHTML; 
   console.log("🔍 showProfileInMainContent completed successfully");
- }
+}
 
- window.showProfileInMainContent = showProfileInMainContent;
-// --- Show digital card in main-content and allow restoring previous section ---
+window.showProfileInMainContent = showProfileInMainContent;
 
 // Load Manage Employee Account
 function loadManageEmployee() {
@@ -5951,7 +6056,7 @@ function attachAttendanceTrackerNameSearch() {
         if (data.success && data.employees.length) {
           dropdown.innerHTML = `<div style='position:absolute;z-index:1000;background:#fff;border:1px solid #ccc;width:100%;max-height:180px;overflow:auto;'>${data.employees.map(emp => {
             const displayName = `${emp.firstName || emp.name || ''} ${emp.lastName || ''}`.trim();
-            return `<div class='dropdown-item' style='padding:8px;cursor:pointer;' data-id='${emp.employeeId}' data-name='${displayName.replace(/'/g, "&#39;")}' >${displayName} <span style='color:#764ba2;font-weight:bold;'>(${emp.employeeId})</span></div>`;
+            return `<div class='dropdown-item' style='padding:8px;cursor:pointer;color:#8C001A;' data-id='${emp.employeeId}' data-name='${displayName.replace(/'/g, "&#39;")}' >${displayName} <span style='color:#764ba2;font-weight:bold;'>(${emp.employeeId})</span></div>`;
           }).join('')}</div>`;
           dropdown.querySelectorAll('.dropdown-item').forEach(item => {
             item.onclick = function(e) {
@@ -5972,156 +6077,445 @@ function attachAttendanceTrackerNameSearch() {
     });
   }
 }
-// ... existing code ...
-
-// ... existing code ...
-  // Show/hide buttons based on role
-  const employee=localStorage.getItem("employee");
-  if (isAdminRole || (employee && employee.role === "hr_recruiter")) {
-    // Add Team Management button if not present
-    const sidebarNav = document.querySelector(".sidebar-nav");
-    if (!document.getElementById("btn-team-management")) {
-      const teamMgmtBtn = document.createElement("button");
-      teamMgmtBtn.id = "btn-team-management";
-      teamMgmtBtn.className = "sidebar-btn";
-      teamMgmtBtn.innerHTML = '<i class="fas fa-users-cog"></i> Team Management';
-      sidebarNav.appendChild(teamMgmtBtn);
-      teamMgmtBtn.addEventListener("click", () => {
-        setActive("btn-team-management");
-        loadTeamManagement();
-        if (window.innerWidth <= 768) {
-          document.getElementById("sidebar").classList.remove("show");
-          document.getElementById("sidebarOverlay").classList.remove("active");
-        }
-      });
-    }
-  }
 
 // ... existing code ...
 
+// ... existing code ...
 // --- Team Management Section ---
 let localTeams = [];
+let availableMembers = [];
+let allEmployees = [];
+let leaders = [];
 let editingTeamId = null;
+
 async function loadTeamManagement() {
-  mainContent.innerHTML = `<div class="admin-content-section centered-section scrollable-form-container" id="team-management-section" style="max-width:900px;">
-    <h2>Team Management</h2>
-    <form id="createTeamForm" class="section-form" style="max-width:600px;margin-bottom:2rem;">
-      <div class="form-row" style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end;">
-        <div class="form-group" style="flex:1 1 220px;min-width:200px;">
-          <label>Team Name</label>
-          <input type="text" id="teamName" required placeholder="Enter Team Name" style="width:100%;min-width:0;" />
+  try {
+    // First, create the HTML structure
+    const mainContent = document.getElementById("mainContent");
+    mainContent.innerHTML = `
+      <div class="admin-content-section team-management-section">
+        <h2 style="margin-bottom:20px;"><i class="fas fa-users-cog"></i> Team Management</h2>
+        
+        <!-- Create Team Form -->
+        <div class="team-creation-section" style="margin-bottom: 2rem; padding: 1.5rem; background: rgba(255,255,255,0.1); border-radius: 12px;">
+          <h3 style="margin-bottom: 1rem; color: #764ba2;">Create New Team</h3>
+          <form id="createTeamForm" class="section-form" style="width:60vw;">
+            <div class="form-group">
+              <label for="teamName">Team Name</label>
+              <input type="text" id="teamName" name="teamName" required placeholder="Enter team name">
+            </div>
+            
+            <div class="form-group">
+              <label for="teamLeader">Team Leader</label>
+              <select id="teamLeader" name="teamLeader" required>
+                <option value="">Select a team leader</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="teamMembers">Team Members</label>
+              <select id="teamMembers" name="teamMembers" multiple style="height: 120px;">
+                <option value="">Loading members...</option>
+              </select>
+              <small style="color: #fff; font-size: 0.9rem;">Hold Ctrl/Cmd to select multiple members</small>
+            </div>
+            
+            <div class="form-row" style="justify-content: flex-start; gap: 1rem;">
+              <button type="submit" class="modern-btn" style="background: linear-gradient(90deg, #43cea2, #764ba2); color: white; padding: 0.75rem 2rem; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">
+                <i class="fas fa-plus"></i> Create Team
+              </button>
+            </div>
+          </form>
         </div>
-        <div class="form-group" style="flex:1 1 220px;min-width:200px;">
-          <label>Team Leader</label>
-          <select id="teamLeader" required style="width:100%;min-width:0;"></select>
+        
+        <!-- Teams List -->
+        <div class="teams-list-section">
+          <h3 style="margin-bottom: 1rem; color: #764ba2;">Existing Teams</h3>
+          <div id="teamListContainer">
+            <div style="color:#888;text-align:center;margin-top:2rem;">Loading teams...</div>
+          </div>
         </div>
       </div>
-      <div class="form-row" style="margin-top:1rem;">
-        <div class="form-group" style="flex:1 1 100%;min-width:200px;">
-          <label>Team Members</label>
-          <select id="teamMembers" multiple required style="width:100%;min-width:0;height:120px;"></select>
+    `;
+
+    const token = localStorage.getItem("jwtToken");
+    console.log("Loading team management with token:", token ? "Token exists" : "No token");
+    
+    // Fetch all employees
+    const empRes = await fetch("/api/employees", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    console.log("Employees response status:", empRes.status);
+    const empData = await empRes.json();
+    console.log("Employees data:", empData);
+    if (empData.success) {
+      allEmployees = empData.employees;
+      // Filter leaders (eligible for team leadership)
+      leaders = allEmployees.filter(emp => emp.role === "team_leader");
+      console.log("Found leaders:", leaders.length);
+      
+      // Debug: Check what roles are in the data
+      const roles = [...new Set(allEmployees.map(emp => emp.role))];
+      console.log("All roles in data:", roles);
+      console.log("Roles that will be excluded:", TEAM_MEMBER_EXCLUDE_ROLES);
+      
+      const eligibleForTeams = allEmployees.filter(emp => !TEAM_MEMBER_EXCLUDE_ROLES.includes(emp.role));
+      console.log("Employees eligible for teams:", eligibleForTeams.length);
+      console.log("Eligible employees:", eligibleForTeams.map(emp => `${emp.firstName || emp.name || emp.employeeId} (${emp.role})`));
+    } else {
+      console.error("Failed to fetch employees:", empData.message);
+    }
+
+    // Fetch teams
+    const teamsRes = await fetch("/api/teams", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    console.log("Teams response status:", teamsRes.status);
+    const teamsData = await teamsRes.json();
+    console.log("Teams data:", teamsData);
+    if (teamsData.success) {
+      localTeams = teamsData.teams;
+      console.log("Loaded teams:", localTeams.length);
+    } else {
+      console.error("Failed to fetch teams:", teamsData.message);
+    }
+
+    // Fetch available members
+    const availRes = await fetch("/api/teams/available-members", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    console.log("Available members response status:", availRes.status);
+    const availData = await availRes.json();
+    console.log("Available members data:", availData);
+    if (availData.success) {
+      availableMembers = availData.available;
+      console.log("Available members:", availableMembers.length);
+    } else {
+      console.error("Failed to fetch available members:", availData.message);
+    }
+
+    // Update UI
+    console.log("Updating team management UI...");
+    updateTeamManagementUI();
+    renderTeamList();
+    setupTeamCreationForm();
+    console.log("Team management UI updated successfully");
+  } catch (error) {
+    console.error("Error loading team management:", error);
+    // Show error message in the main content
+    const mainContent = document.getElementById("mainContent");
+    mainContent.innerHTML = `
+      <div class="admin-content-section team-management-section">
+        <h2><i class="fas fa-users-cog"></i> Team Management</h2>
+        <div style="color: #dc3545; text-align: center; padding: 2rem;">
+          <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+          <p>Error loading team management. Please try again.</p>
+          <button onclick="loadTeamManagement()" style="background: linear-gradient(90deg, #43cea2, #764ba2); color: white; padding: 0.75rem 2rem; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 1rem;">
+            <i class="fas fa-redo"></i> Retry
+          </button>
         </div>
       </div>
-      <div class="form-row" style="margin-top:1.5rem;">
-        <button type="submit" class="modern-btn" style="background:#43cea2;color:#fff;padding:10px 24px;border-radius:8px;font-weight:600;font-size:1.1rem;box-shadow:0 2px 8px rgba(67,206,162,0.10);border:none;transition:background 0.2s;">Create Team</button>
-      </div>
-    </form>
-    <div id="teamListContainer"></div>
+    `;
+  }
+}
+// --- Organization Structure Section ---
+async function loadOrganizationStructure() {
+  setActive("btn-organization-structure");
+  const mainContent = document.getElementById("mainContent");
+  mainContent.innerHTML = `<div class="admin-content-section team-management-section" id="org-structure-section">
+    <h2 style="margin-bottom:24px;"><i class="fas fa-sitemap"></i> Organization Structure</h2>
+    <div id="orgStructureContent" style="display:flex;flex-direction:column;gap:2.5rem;"></div>
   </div>`;
 
-  // Fetch employees and filter for dropdowns
-  const token = localStorage.getItem("jwtToken");
-  const res = await fetch("/api/employees", {
-    headers: { Authorization: `Bearer ${token}` },
+  // Use public endpoints for non-admin/HR users
+  if (!isAdminRole && !isHRRole) {
+    if (!allEmployees.length) {
+      try {
+        const empRes = await fetch("/api/employees/public");
+        console.log("/api/employees/public status:", empRes.status);
+        const empData = await empRes.json();
+        console.log("/api/employees/public data:", empData);
+        if (empData.success) allEmployees = empData.employees;
+        else console.error("Failed to fetch employees (public):", empData.message);
+      } catch (err) {
+        console.error("Error fetching /api/employees/public:", err);
+      }
+    }
+    if (!localTeams.length) {
+      try {
+        const teamsRes = await fetch("/api/teams/public");
+        console.log("/api/teams/public status:", teamsRes.status);
+        const teamsData = await teamsRes.json();
+        console.log("/api/teams/public data:", teamsData);
+        if (teamsData.success) localTeams = teamsData.teams;
+        else console.error("Failed to fetch teams (public):", teamsData.message);
+      } catch (err) {
+        console.error("Error fetching /api/teams/public:", err);
+      }
+    }
+  } else {
+    // Admin/HR: use full endpoints with token
+    if (!allEmployees.length) {
+      try {
+        const token = localStorage.getItem("jwtToken");
+        const empRes = await fetch("/api/employees", { headers: { Authorization: `Bearer ${token}` } });
+        console.log("/api/employees status:", empRes.status);
+        const empData = await empRes.json();
+        console.log("/api/employees data:", empData);
+        if (empData.success) allEmployees = empData.employees;
+        else console.error("Failed to fetch employees:", empData.message);
+      } catch (err) {
+        console.error("Error fetching /api/employees:", err);
+      }
+    }
+    if (!localTeams.length) {
+      try {
+        const token = localStorage.getItem("jwtToken");
+        const teamsRes = await fetch("/api/teams", { headers: { Authorization: `Bearer ${token}` } });
+        console.log("/api/teams status:", teamsRes.status);
+        const teamsData = await teamsRes.json();
+        console.log("/api/teams data:", teamsData);
+        if (teamsData.success) localTeams = teamsData.teams;
+        else console.error("Failed to fetch teams:", teamsData.message);
+      } catch (err) {
+        console.error("Error fetching /api/teams:", err);
+      }
+    }
+  }
+
+  // Group employees by role
+  const roleGroups = {
+    admin: [],
+    hr_recruiter: [],
+    bdm: [],
+    senior_writer: [],
+  };
+  allEmployees.forEach(emp => {
+    if (emp.role === "admin" || emp.role === "hr_admin") roleGroups.admin.push(emp);
+    else if (emp.role === "hr_recruiter" || emp.role === "hr_manager" || emp.role === "hr_executive") roleGroups.hr_recruiter.push(emp);
+    else if (emp.role === "bdm") roleGroups.bdm.push(emp);
+    else if (emp.role === "senior_writer") roleGroups.senior_writer.push(emp);
   });
-  const data = await res.json();
-  if (!data.success || !Array.isArray(data.employees)) return;
-  const employees = data.employees;
-  // Team Leader: only team_leader role
-  const leaders = employees.filter(e => e.role === "team_leader");
-  // Team Members: all except admin, hr_recruiter, team_leader
-  const members = employees.filter(e => !["admin","hr_admin","hr_recruiter","team_leader"].includes(e.role));
+
+  // Card configs for each role
+  const roleCards = [
+    { key: "admin", label: "Admin", icon: "fa-crown", color: "#ffb347" },
+    { key: "hr_recruiter", label: "HR / Recruiter", icon: "fa-user-tie", color: "#43cea2" },
+    { key: "bdm", label: "BDM", icon: "fa-chart-line", color: "#764ba2" },
+    { key: "senior_writer", label: "Senior Writer", icon: "fa-pen-nib", color: "#ff758c" },
+  ];
+
+  // Render role cards
+  let html = '<div class="org-roles-row" style="display:flex;flex-wrap:wrap;gap:2rem;justify-content:center;">';
+  for (const role of roleCards) {
+    if (!roleGroups[role.key].length) continue;
+    html += `<div class="org-role-card" style="background:linear-gradient(120deg,${role.color}22,#fff 80%);border-radius:16px;box-shadow:0 2px 12px rgba(67,206,162,0.10);padding:1.5rem 2rem;min-width:220px;max-width:300px;flex:1 1 220px;display:flex;flex-direction:column;align-items:center;">
+      <div style="font-size:2.2rem;margin-bottom:0.5rem;color:${role.color};"><i class="fas ${role.icon}"></i></div>
+      <div style="font-size:1.3rem;font-weight:700;margin-bottom:0.7rem;color:${role.color};">${role.label}</div>
+      <div style="display:flex;flex-direction:column;gap:0.5rem;width:100%;align-items:center;">
+        ${roleGroups[role.key].map(emp => {
+          let displayName = "";
+          if (emp.firstName || emp.lastName) {
+            displayName = `${emp.firstName || ""}${emp.firstName && emp.lastName ? " " : ""}${emp.lastName || ""}`.trim();
+          } else {
+            displayName = emp.employeeId || "Unknown";
+          }
+          return `<div style=\"background:linear-gradient(135deg, #667eea, #764ba2);border-radius:8px;padding:0.5rem 1rem;box-shadow:0 1px 4px #764ba211;font-size:1.08rem;font-weight:500;width:100%;text-align:center;\">${displayName}</div>`;
+        }).join("")}
+      </div>
+    </div>`;
+  }
+  html += '</div>';
+
+  // Teams Section
+  html += '<div class="org-teams-section" style="margin-top:2.5rem;">';
+  html += '<h3 style="margin-bottom:1.2rem;margin-left:45%;color:#764ba2;"><i class="fas fa-users"></i> Teams</h3>';
+  html += '<div class="org-teams-list" style="display:flex;flex-wrap:wrap;gap:1.5rem;justify-content:center;">';
+  for (const team of localTeams) {
+    // Team leader display name
+    let leaderName = "-";
+    if (team.team_leader_details) {
+      if (team.team_leader_details.firstName || team.team_leader_details.lastName) {
+        leaderName = `${team.team_leader_details.firstName || ""}${team.team_leader_details.firstName && team.team_leader_details.lastName ? " " : ""}${team.team_leader_details.lastName || ""}`.trim();
+      } else {
+        leaderName = team.team_leader_details.employeeId || "Unknown";
+      }
+    } else if (team.team_leader) {
+      leaderName = team.team_leader;
+    }
+    // Team members display names
+    const memberNames = (team.team_members_details || []).map(m => {
+      if (m.firstName || m.lastName) {
+        return `${m.firstName || ""}${m.firstName && m.lastName ? " " : ""}${m.lastName || ""}`.trim();
+      } else {
+        return m.employeeId || "Unknown";
+      }
+    });
+    html += `<div class="org-team-card" style="background:linear-gradient(120deg,#e0c3fc22,#fff 80%);border-radius:14px;box-shadow:0 2px 8px rgba(67,206,162,0.10);padding:1.2rem 1rem;min-width:220px;max-width:270px;flex:1 1 220px;display:flex;flex-direction:column;align-items:center;">
+      <div style="font-size:1.1rem;font-weight:700;margin-bottom:0.5rem;color:#764ba2;"><i class="fas fa-users"></i> ${team.team_name}</div>
+      <div style="font-size:1rem;margin-bottom:0.3rem;color:#800000"><b>Leader:</b> ${leaderName}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:0.5rem;justify-content:center;">
+        ${memberNames.map(n => `<div style=\"background:linear-gradient(135deg, #667eea, #764ba2);border-radius:6px;padding:0.3rem 0.8rem;box-shadow:0 1px 3px #764ba211;font-size:0.97rem;\">${n}</div>`).join("")}
+      </div>
+    </div>`;
+  }
+  html += '</div></div>';
+
+  document.getElementById("orgStructureContent").innerHTML = html;
+}
+window.loadOrganizationStructure = loadOrganizationStructure;
+
+// Helper to update member select options
+function updateMemberSelect(selectEl, selectedIds = []) {
+  if (!selectEl) return;
+  
+  console.log("updateMemberSelect called with selectedIds:", selectedIds);
+  console.log("availableMembers count:", availableMembers.length);
+  console.log("allEmployees count:", allEmployees.length);
+  
+  // Only eligible employees (not in excluded roles)
+  const eligibleAvailable = availableMembers.filter(m => !TEAM_MEMBER_EXCLUDE_ROLES.includes(m.role));
+  const eligibleAll = allEmployees.filter(m => !TEAM_MEMBER_EXCLUDE_ROLES.includes(m.role));
+  
+  console.log("eligibleAvailable count:", eligibleAvailable.length);
+  console.log("eligibleAll count:", eligibleAll.length);
+  console.log("TEAM_MEMBER_EXCLUDE_ROLES:", TEAM_MEMBER_EXCLUDE_ROLES);
+  
+  // Use eligible availableMembers for creation, or eligible all for edit
+  const allOptions = [
+    ...eligibleAvailable,
+    ...eligibleAll.filter(m => selectedIds.includes(m.employeeId) && !eligibleAvailable.some(a => a.employeeId === m.employeeId))
+  ];
+  
+  // Remove duplicates
+  const uniqueOptions = Array.from(new Map(allOptions.map(m => [m.employeeId, m])).values());
+  
+  console.log("final uniqueOptions count:", uniqueOptions.length);
+  console.log("uniqueOptions:", uniqueOptions.map(m => `${m.firstName || m.name || m.employeeId} (${m.role})`));
+  
+  selectEl.innerHTML = uniqueOptions.map(m =>
+    `<option value="${m.employeeId}" ${selectedIds.includes(m.employeeId) ? 'selected' : ''}>${m.firstName || m.name || m.employeeId}</option>`
+  ).join("");
+}
+
+// Update team management UI elements
+function updateTeamManagementUI() {
   // Populate leader dropdown
   const leaderSelect = document.getElementById("teamLeader");
-  leaderSelect.innerHTML = leaders.map(l => `<option value="${l.employeeId}">${l.firstName || l.name || l.employeeId}</option>`).join("");
+  if (leaderSelect) {
+    leaderSelect.innerHTML = leaders.map(l => 
+      `<option value="${l.employeeId}">${l.firstName || l.name || l.employeeId}</option>`
+    ).join("");
+  }
+  
   // Populate members multi-select
   const memberSelect = document.getElementById("teamMembers");
-  memberSelect.innerHTML = members.map(m => `<option value="${m.employeeId}">${m.firstName || m.name || m.employeeId}</option>`).join("");
+  if (memberSelect) {
+    updateMemberSelect(memberSelect);
+  }
+}
 
-  // Handle team creation (local only)
-  document.getElementById("createTeamForm").onsubmit = function(e) {
-    e.preventDefault();
-    const teamName = document.getElementById("teamName").value.trim();
-    const teamLeaderId = document.getElementById("teamLeader").value;
-    const teamLeader = leaders.find(l => l.employeeId === teamLeaderId);
-    const memberIds = Array.from(document.getElementById("teamMembers").selectedOptions).map(opt => opt.value);
-    const teamMembers = members.filter(m => memberIds.includes(m.employeeId));
-    const teamId = `team_${localTeams.length + 1}`;
-    localTeams.push({ team_id: teamId, team_name: teamName, team_leader: teamLeader, team_members: teamMembers });
-    renderTeamList();
-    this.reset();
-  };
+// Render team list from localTeams
+function renderTeamList() {
+  
+  const container = document.getElementById("teamListContainer");
+  if (!container) return;
 
-  function renderTeamList() {
-    const container = document.getElementById("teamListContainer");
-    if (!localTeams.length) {
-      container.innerHTML = '<div style="color:#888;text-align:center;margin-top:2rem;">No teams created yet.</div>';
-      return;
+  if (!localTeams.length) {
+    container.innerHTML = '<div style="color:#888;text-align:center;margin-top:2rem;">No teams created yet.</div>';
+    return;
+  }
+
+  container.innerHTML = `<div class="teams-list-scroll" style="display:flex;flex-wrap:wrap;gap:1.5rem;max-height:400px;overflow-y:auto;">${localTeams.map(team => {
+    if (editingTeamId === team._id) {
+      // --- EDIT MODE ---
+      if (!window._editMembers) window._editMembers = {};
+      if (!window._editMembers[team._id]) window._editMembers[team._id] = [...team.team_members];
+      const currentMemberIds = window._editMembers[team._id];
+      const currentMembers = (team.team_members_details || []).filter(m => currentMemberIds.includes(m.employeeId));
+      const eligibleAvailable = availableMembers.filter(m => !TEAM_MEMBER_EXCLUDE_ROLES.includes(m.role));
+      const eligibleAll = allEmployees.filter(m => !TEAM_MEMBER_EXCLUDE_ROLES.includes(m.role));
+      const addableMembers = [...eligibleAvailable, ...eligibleAll].filter(m => m && m.employeeId && !currentMemberIds.includes(m.employeeId));
+      const uniqueAddable = Array.from(new Map(addableMembers.map(m => [m.employeeId, m])).values());
+      return `<div class="team-card" style="background:#f8fafc;border-radius:14px;box-shadow:0 2px 8px rgba(67,206,162,0.10);padding:1.5rem 1.2rem;min-width:260px;max-width:320px;flex:1 1 260px;transition:box-shadow 0.2s;">
+        <input type="text" id="editTeamName_${team._id}" value="${team.team_name}" style="width:100%;margin-bottom:0.5rem;padding:8px 10px;border-radius:6px;border:1px solid #ccc;font-size:1.1rem;" />
+        <div style="margin-bottom:0.7rem;"><strong>Leader:</strong> <select id="editTeamLeader_${team._id}" style="width:100%;padding:6px;border-radius:6px;">${leaders.map(l => `<option value="${l.employeeId}" ${team.team_leader && l.employeeId === team.team_leader ? 'selected' : ''}>${l.firstName || l.name || l.employeeId}</option>`).join('')}</select></div>
+        <div style="margin-bottom:0.7rem;"><strong>Members:</strong>
+          <div style="margin-bottom:0.5rem;">
+            <label style="font-size:0.9rem;color:#666;">Select members to remove:</label>
+            <div class="team-selection-buttons">
+              <button type="button" class="team-selection-btn" onclick="window.selectAllMembers('${team._id}')">Select All</button>
+              <button type="button" class="team-selection-btn" onclick="window.deselectAllMembers('${team._id}')">Deselect All</button>
+            </div>
+            <div class="team-member-selection">
+              ${currentMembers.map(m => `
+                <div class="team-member-item">
+                  <input type="checkbox" id="remove_${team._id}_${m.employeeId}" value="${m.employeeId}" onchange="window.updateRemoveButtonText('${team._id}')">
+                  <label for="remove_${team._id}_${m.employeeId}">${m.firstName || m.name || m.employeeId}</label>
+                </div>
+              `).join('')}
+            </div>
+            <button type="button" class="team-remove-btn" onclick="window.removeSelectedMembersFromTeam('${team._id}')">Remove Selected</button>
+          </div>
+        </div>
+        <div style="margin-bottom:0.7rem;">
+          <strong>Add Member:</strong>
+          <select id="addMemberSelect_${team._id}" style="width:100%;padding:6px;border-radius:6px;">
+            <option value="">-- Select to Add --</option>
+            ${uniqueAddable.map(m => `<option value="${m.employeeId}">${m.firstName || m.name || m.employeeId}</option>`).join('')}
+          </select>
+          <button type="button" style="margin-top:0.5rem;background:linear-gradient(90deg,#43cea2,#764ba2);color:#fff;padding:4px 14px;border-radius:7px;font-weight:600;font-size:0.95rem;box-shadow:0 2px 8px rgba(67,206,162,0.10);border:none;cursor:pointer;transition:background 0.2s;" onclick="window.addMemberToTeam('${team._id}')">Add</button>
+        </div>
+        <div class="team-edit-btn-group" style="display:flex;gap:0.2rem;margin-top:1rem;">
+          <button class="modern-btn" style="background:linear-gradient(90deg,#43cea2,#764ba2);color:#fff;padding:7px 20px;border-radius:7px;font-weight:600;font-size:1rem;box-shadow:0 2px 8px rgba(67,206,162,0.10);border:none;cursor:pointer;transition:background 0.2s;" onclick="window.saveEditTeam('${team._id}')">Save</button>
+          <button class="modern-btn" style="background:#6c757d;color:#fff;padding:7px 20px;border-radius:7px;font-weight:600;font-size:1rem;box-shadow:0 2px 8px rgba(108,117,125,0.10);border:none;cursor:pointer;transition:background 0.2s;" onclick="window.cancelEditTeam('${team._id}')">Cancel</button>
+          <button class="modern-btn" style="background:linear-gradient(90deg,#dc3545,#ff7675);color:#fff;padding:7px 20px;border-radius:7px;font-weight:600;font-size:1rem;box-shadow:0 2px 8px rgba(220,53,69,0.10);border:none;cursor:pointer;transition:background 0.2s;" onclick="window.deleteTeam('${team._id}')">Delete Team</button>
+        </div>
+      </div>`;
+    } else {
+      // ... existing code for view mode ...
+      const teamLeader = leaders.find(l => l.employeeId === team.team_leader);
+      return `<div class="team-card" style="background:#f8fafc;border-radius:14px;box-shadow:0 2px 8px rgba(67,206,162,0.10);padding:1.5rem 1.2rem;min-width:260px;max-width:320px;flex:1 1 260px;transition:box-shadow 0.2s;">
+        <div style="font-size:1.2rem;font-weight:700;color:#764ba2;margin-bottom:0.5rem;">${team.team_name}</div>
+        <div style="margin-bottom:0.7rem;"><strong>Leader:</strong> ${teamLeader ? (teamLeader.firstName || teamLeader.name || teamLeader.employeeId) : team.team_leader}</div>
+        <div style="margin-bottom:0.7rem;"><strong>Members:</strong><ul style="margin:0 0 0 1.2rem;padding:0;">${(team.team_members_details || []).map(m => `<li style="margin-bottom:2px;">${m.firstName || m.name || m.employeeId}</li>`).join('')}</ul></div>
+        <div style="display:flex;gap:0.7rem;margin-top:1rem;">
+          <button class="modern-btn" style="background:linear-gradient(90deg,#ffc107,#ff7675);color:#333;padding:7px 20px;border-radius:7px;font-weight:600;font-size:1rem;box-shadow:0 2px 8px rgba(255,193,7,0.10);border:none;cursor:pointer;transition:background 0.2s;" onclick="window.editTeam('${team._id}')">Edit</button>
+          <button class="modern-btn" style="background:linear-gradient(90deg,#dc3545,#ff7675);color:#fff;padding:7px 20px;border-radius:7px;font-weight:600;font-size:1rem;box-shadow:0 2px 8px rgba(220,53,69,0.10);border:none;cursor:pointer;transition:background 0.2s;" onclick="window.deleteTeam('${team._id}')">Delete</button>
+        </div>
+      </div>`;
     }
-    container.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:1.5rem;">${localTeams.map(team => {
-      if (editingTeamId === team.team_id) {
-        // Edit mode
-        return `<div class=\"team-card\" style=\"background:#f8fafc;border-radius:14px;box-shadow:0 2px 8px rgba(67,206,162,0.10);padding:1.5rem 1.2rem;min-width:260px;max-width:320px;flex:1 1 260px;\">
-          <input type=\"text\" id=\"editTeamName_${team.team_id}\" value=\"${team.team_name}\" style=\"width:100%;margin-bottom:0.5rem;padding:6px;border-radius:6px;border:1px solid #ccc;\" />
-          <div style=\"margin-bottom:0.7rem;\"><strong>Leader:</strong> <select id=\"editTeamLeader_${team.team_id}\" style=\"width:100%;\">${leaders.map(l => `<option value=\"${l.employeeId}\" ${team.team_leader && l.employeeId === team.team_leader.employeeId ? 'selected' : ''}>${l.firstName || l.name || l.employeeId}</option>`).join('')}</select></div>
-          <div style=\"margin-bottom:0.7rem;\"><strong>Members:</strong><select id=\"editTeamMembers_${team.team_id}\" multiple style=\"width:100%;height:80px;\">${members.map(m => `<option value=\"${m.employeeId}\" ${team.team_members.some(tm => tm.employeeId === m.employeeId) ? 'selected' : ''}>${m.firstName || m.name || m.employeeId}</option>`).join('')}</select></div>
-          <div style=\"display:flex;gap:0.7rem;margin-top:1rem;\">
-            <button class=\"modern-btn\" style=\"background:#43cea2;color:#fff;padding:6px 18px;border-radius:7px;font-weight:600;font-size:1rem;box-shadow:0 2px 8px rgba(67,206,162,0.10);border:none;transition:background 0.2s;\" onclick=\"window.saveEditTeam('${team.team_id}')\">Save</button>
-            <button class=\"modern-btn\" style=\"background:#6c757d;color:#fff;padding:6px 18px;border-radius:7px;font-weight:600;font-size:1rem;box-shadow:0 2px 8px rgba(108,117,125,0.10);border:none;transition:background 0.2s;\" onclick=\"window.cancelEditTeam('${team.team_id}')\">Cancel</button>
-          </div>
-        </div>`;
+  }).join('')}</div>`;
+
+  // Attach global handlers for edit/save/cancel/delete
+
+}
+
+// Handle team creation (API)
+function setupTeamCreationForm() {
+  const createTeamForm = document.getElementById("createTeamForm");
+  if (createTeamForm) {
+    createTeamForm.onsubmit = async function(e) {
+      e.preventDefault();
+      const teamName = document.getElementById("teamName").value.trim();
+      const teamLeaderId = document.getElementById("teamLeader").value;
+      const memberIds = Array.from(document.getElementById("teamMembers").selectedOptions).map(opt => opt.value);
+      const token = localStorage.getItem("jwtToken");
+      const res = await fetch("/api/teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ team_name: teamName, team_leader: teamLeaderId, team_members: memberIds })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadTeamManagement();
+        this.reset();
       } else {
-        // View mode
-        return `<div class=\"team-card\" style=\"background:#f8fafc;border-radius:14px;box-shadow:0 2px 8px rgba(67,206,162,0.10);padding:1.5rem 1.2rem;min-width:260px;max-width:320px;flex:1 1 260px;\">
-          <div style=\"font-size:1.2rem;font-weight:700;color:#764ba2;margin-bottom:0.5rem;\">${team.team_name}</div>
-          <div style=\"margin-bottom:0.7rem;\"><strong>Leader:</strong> ${team.team_leader ? (team.team_leader.firstName || team.team_leader.name || team.team_leader.employeeId) : '-'}</div>
-          <div style=\"margin-bottom:0.7rem;\"><strong>Members:</strong><ul style=\"margin:0 0 0 1.2rem;padding:0;\">${team.team_members.map(m => `<li>${m.firstName || m.name || m.employeeId}</li>`).join('')}</ul></div>
-          <div style=\"display:flex;gap:0.7rem;margin-top:1rem;\">
-            <button class=\"modern-btn\" style=\"background:#ffc107;color:#333;padding:6px 18px;border-radius:7px;font-weight:600;font-size:1rem;box-shadow:0 2px 8px rgba(255,193,7,0.10);border:none;transition:background 0.2s;\" onclick=\"window.editTeam('${team.team_id}')\">Edit</button>
-            <button class=\"modern-btn\" style=\"background:#dc3545;color:#fff;padding:6px 18px;border-radius:7px;font-weight:600;font-size:1rem;box-shadow:0 2px 8px rgba(220,53,69,0.10);border:none;transition:background 0.2s;\" onclick=\"window.deleteTeam('${team.team_id}')\">Delete</button>
-          </div>
-        </div>`;
+        alert(data.message || "Failed to create team");
       }
-    }).join('')}</div>`;
-    // Attach global handlers for edit/save/cancel/delete
-    window.editTeam = function(teamId) {
-      editingTeamId = teamId;
-      renderTeamList();
-    };
-    window.cancelEditTeam = function(teamId) {
-      editingTeamId = null;
-      renderTeamList();
-    };
-    window.saveEditTeam = function(teamId) {
-      const teamIdx = localTeams.findIndex(t => t.team_id === teamId);
-      if (teamIdx === -1) return;
-      const newName = document.getElementById(`editTeamName_${teamId}`).value.trim();
-      const newLeaderId = document.getElementById(`editTeamLeader_${teamId}`).value;
-      const newLeader = leaders.find(l => l.employeeId === newLeaderId);
-      const newMemberIds = Array.from(document.getElementById(`editTeamMembers_${teamId}`).selectedOptions).map(opt => opt.value);
-      const newMembers = members.filter(m => newMemberIds.includes(m.employeeId));
-      localTeams[teamIdx].team_name = newName;
-      localTeams[teamIdx].team_leader = newLeader;
-      localTeams[teamIdx].team_members = newMembers;
-      editingTeamId = null;
-      renderTeamList();
-    };
-    window.deleteTeam = function(teamId) {
-      localTeams = localTeams.filter(t => t.team_id !== teamId);
-      editingTeamId = null;
-      renderTeamList();
     };
   }
-  renderTeamList();
+
 }
-// ... existing code ...
+
+
