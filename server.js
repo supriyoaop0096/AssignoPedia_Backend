@@ -1029,13 +1029,12 @@ app.post("/api/pay-slip", authenticateToken, requireHRorAdmin, async (req, res) 
 // API: Mark attendance (check-in/check-out, late entry, late count)
 app.post("/api/attendance", authenticateToken, restrictAttendanceByIP, async (req, res) => {
   try {
-    const { employeeId, employeeName, date, checkIn, checkOut } = req.body;
-    if (!employeeId || !date) {
-      return res.status(400).json({ success: false, message: "employeeId and date are required." });
+    const { employeeId, employeeName, checkIn, checkOut } = req.body;
+    if (!employeeId) {
+      return res.status(400).json({ success: false, message: "employeeId is required." });
     }
-    // Always use IST for attendance date
-    const istNow = getISTDate(new Date());
-    const attendanceDate = new Date(istNow.getFullYear(), istNow.getMonth(), istNow.getDate());
+    // Always use IST string for attendance date
+    const attendanceDate = getISTDateString();
     let att = await Attendance.findOne({ employeeId, date: attendanceDate });
 
     // Helper to calculate late/early
@@ -1055,6 +1054,10 @@ app.post("/api/attendance", authenticateToken, restrictAttendanceByIP, async (re
     let lateCount = 0, earlyCheckoutCount = 0;
     let newCheckIn = checkIn, newCheckOut = checkOut;
     if (att) {
+      // Prevent duplicate log-in for today
+      if (checkIn && att.checkIn) {
+        return res.status(400).json({ error: "ALREADY_LOGGED_IN" });
+      }
       // Update existing record
       if (checkIn && !att.checkIn) att.checkIn = checkIn;
       if (checkOut) att.checkOut = checkOut;
@@ -1065,11 +1068,11 @@ app.post("/api/attendance", authenticateToken, restrictAttendanceByIP, async (re
       att.earlyCheckout = earlyCheckout;
       att.status = "Present";
       // Calculate counts for the month
-      const month = attendanceDate.getMonth();
-      const year = attendanceDate.getFullYear();
+      const month = new Date(attendanceDate).getMonth();
+      const year = new Date(attendanceDate).getFullYear();
       const monthStart = new Date(year, month, 1);
-      const prevLateCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lt: attendanceDate }, lateEntry: true });
-      const prevEarlyCheckoutCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lt: attendanceDate }, earlyCheckout: true });
+      const prevLateCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lt: new Date(attendanceDate) }, lateEntry: true });
+      const prevEarlyCheckoutCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lt: new Date(attendanceDate) }, earlyCheckout: true });
       lateCount = lateEntry ? prevLateCount + 1 : prevLateCount;
       earlyCheckoutCount = earlyCheckout ? prevEarlyCheckoutCount + 1 : prevEarlyCheckoutCount;
       att.lateCount = lateCount;
@@ -1083,15 +1086,15 @@ app.post("/api/attendance", authenticateToken, restrictAttendanceByIP, async (re
       }
       lateEntry = getLateEntry(checkIn);
       // Calculate counts for the month
-      const month = attendanceDate.getMonth();
-      const year = attendanceDate.getFullYear();
+      const month = new Date(attendanceDate).getMonth();
+      const year = new Date(attendanceDate).getFullYear();
       const monthStart = new Date(year, month, 1);
-      const prevLateCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lt: attendanceDate }, lateEntry: true });
+      const prevLateCount = await Attendance.countDocuments({ employeeId, date: { $gte: monthStart, $lt: new Date(attendanceDate) }, lateEntry: true });
       lateCount = lateEntry ? prevLateCount + 1 : prevLateCount;
       att = new Attendance({
         employeeId,
         employeeName,
-        date: attendanceDate,
+        date: new Date(attendanceDate),
         checkIn,
         lateEntry,
         lateCount,
@@ -2140,3 +2143,35 @@ app.get('/api/teams/public', async (req, res) => {
 
 // --- To run the migration, uncomment the following line and restart your server ---
 // migrateLeaveRequestNotifications();
+
+function getISTDateString(date = new Date()) {
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const ist = new Date(date.getTime() + istOffset);
+  return ist.toISOString().slice(0, 10);
+}
+
+// --- One-time migration for attendance date fields ---
+// To run: Uncomment migrateAttendanceDates() and restart your server. Comment it again after migration is complete.
+
+//onst mongoose = require('mongoose');
+//const Attendance = require('./models/Attendance'); // Adjust path if needed
+
+// function getISTDateString(date) {
+//   const istOffset = 5.5 * 60 * 60 * 1000;
+//   const ist = new Date(date.getTime() + istOffset);
+//   return ist.toISOString().slice(0, 10);
+// }
+
+// async function migrateAttendanceDates() {
+//   const all = await Attendance.find({});
+//   for (const doc of all) {
+//     if (doc.date instanceof Date) {
+//       doc.date = getISTDateString(doc.date);
+//       await doc.save();
+//       console.log(`Migrated record for employee ${doc.employeeId} on ${doc.date}`);
+//     }
+//   }
+//   console.log('Migration complete!');
+//   // Optionally, process.exit(0);
+// }
+//  migrateAttendanceDates(); // <-- Uncomment this line and restart your server to run the migration ONCE

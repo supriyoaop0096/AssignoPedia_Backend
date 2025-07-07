@@ -2576,15 +2576,20 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       function getCurrentDateISO() {
         const now = new Date();
-        return now.toISOString().slice(0, 10);
+        // IST is UTC+5:30, so add 5.5 hours in ms
+        const istOffset = 5.5 * 60 * 60 * 1000;
+        const istNow = new Date(now.getTime() + istOffset);
+        return istNow.toISOString().slice(0, 10);
       }
 
       // --- Button logic ---
       checkinBtn.onclick = async function () {
-        if (checkinInput.value) return;
+        console.log('Check-in button clicked!'); // Debug log
+        // Allow check-in even if there's an existing value - let the backend handle duplicates
         const time24 = getCurrentTime24();
         const time12 = getCurrentTime12();
-        checkinInput.value = time12;
+        // Only set the input value if this is a fresh check-in (not a duplicate)
+        // The backend will tell us if it's a duplicate
         // Send check-in to backend
         const res = await fetch('/api/attendance', {
           method: 'POST',
@@ -2599,17 +2604,47 @@ document.addEventListener("DOMContentLoaded", () => {
             checkIn: time24
           }),
         });
-        const data = await res.json();
-        if (data && data.error && data.error === 'ALREADY_LOGGED_IN') {
-          alert("You can't log-in today upto 12:00AM");
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (e) {
+          data = {};
+        }
+        console.log('Check-in response:', data, 'Status:', res.status, 'res.ok:', res.ok);
+        
+        // Debug: Check all conditions
+        const condition1 = !res.ok && data && data.error === 'ALREADY_LOGGED_IN';
+        const condition2 = data && data.success === false && data.message && data.message.toLowerCase().includes('already logged in');
+        console.log('Condition 1 (400 + ALREADY_LOGGED_IN):', condition1);
+        console.log('Condition 2 (success false + message):', condition2);
+        
+        if (condition1 || condition2) {
+          console.log('Showing alert for duplicate check-in');
+          alert("You can't check-in again until 12:00 AM.");
+          checkinInput.value = "";
+          
+          // Refresh timestamp after a few seconds
+          setTimeout(() => {
+            updateTimestamp(); // Refresh timestamp box
+          }, 1000);
           return;
         }
+        
+        // If we reach here, check-in was successful
+        checkinInput.value = time12; // Set the input value only after successful check-in
         // Enable checkout
         checkoutBtn.disabled = false;
         checkoutInput.disabled = false;
         // Fetch today's attendance from backend to ensure latest data
         await fetchTodayAttendance();
-        // Show late count
+        await loadAttendanceTable();
+        
+        // Clear check-in input and refresh timestamp after a few seconds
+        setTimeout(() => {
+          checkinInput.value = '';
+          updateTimestamp(); // Refresh timestamp box
+        }, 3000); // Clear after 3 seconds
+        // Show late count and clear after 10 seconds
         lateCountDisplay.textContent = `Late Count (This Month): ${data.lateCount || 0}`;
         let elCountSpan = document.getElementById("earlyCheckoutCountDisplay");
         if (!elCountSpan) {
@@ -2619,14 +2654,26 @@ document.addEventListener("DOMContentLoaded", () => {
           lateCountDisplay.parentNode.appendChild(elCountSpan);
         }
         elCountSpan.textContent = '';
+        if (typeof data.earlyCheckoutCount !== 'undefined') {
+          elCountSpan.textContent = `Early Logout (This Month): ${data.earlyCheckoutCount || 0}`;
+        }
+        setTimeout(() => {
+          lateCountDisplay.textContent = '';
+          if (elCountSpan) elCountSpan.textContent = '';
+        }, 10000);
+        // Show success alert
+        alert("You have successfully logged in.");
       };
 
       checkoutBtn.onclick = async function () {
-        if (!checkinInput.value || checkoutInput.value) return;
+        console.log('Check-out button clicked!'); // Debug log
+        // Allow check-out even if there's an existing value - let the backend handle duplicates
         const time24 = getCurrentTime24();
         const time12 = getCurrentTime12();
-        checkoutInput.value = time12;
+        // Don't set checkoutInput.value immediately - wait for backend response
         // Send check-out to backend
+        let data = {};
+        try {
         const res = await fetch('/api/attendance', {
           method: 'POST',
           headers: {
@@ -2640,10 +2687,18 @@ document.addEventListener("DOMContentLoaded", () => {
             checkOut: time24
           }),
         });
-        const data = await res.json();
-        // Fetch today's attendance from backend to ensure latest data
-        await fetchTodayAttendance();
-        // Show late and early checkout counts
+          data = await res.json();
+          console.log('Check-out response:', data);
+          if (!res.ok || (data && data.success === false)) {
+            let msg = (data && data.message) ? data.message : 'Check-out failed. Please try again.';
+            alert(msg);
+            checkoutInput.value = '';
+            updateTimestamp(); // Refresh timestamp box on error
+            return; // Don't proceed further on error
+          } else {
+            // If we reach here, check-out was successful
+            checkoutInput.value = time12; // Set the input value only after successful check-out
+            // Show late and early checkout counts and clear after 10 seconds
         lateCountDisplay.textContent = `Late Count (This Month): ${data.lateCount || 0}`;
         let elCountSpan = document.getElementById("earlyCheckoutCountDisplay");
         if (!elCountSpan) {
@@ -2653,6 +2708,32 @@ document.addEventListener("DOMContentLoaded", () => {
           lateCountDisplay.parentNode.appendChild(elCountSpan);
         }
         elCountSpan.textContent = `Early Logout (This Month): ${data.earlyCheckoutCount || 0}`;
+            setTimeout(() => {
+              lateCountDisplay.textContent = '';
+              if (elCountSpan) elCountSpan.textContent = '';
+            }, 10000);
+            // Show success alert
+            alert("You have successfully logged out.");
+            
+            // Clear check-out input and refresh timestamp after a few seconds
+            setTimeout(() => {
+              checkoutInput.value = '';
+              updateTimestamp(); // Refresh timestamp box
+            }, 3000); // Clear after 3 seconds
+            
+            // Disable check-out button after successful check-out
+            checkoutBtn.disabled = true;
+            checkoutInput.disabled = true;
+          }
+        } catch (err) {
+          alert('Check-out failed due to a network or server error.');
+          checkoutInput.value = '';
+          updateTimestamp(); // Refresh timestamp box on error
+        } finally {
+          // Always update UI after attempt
+          await fetchTodayAttendance();
+          await loadAttendanceTable();
+        }
       };
 
       // Remove finalSubmitBtn and localStorage logic for attendance
@@ -2679,21 +2760,35 @@ document.addEventListener("DOMContentLoaded", () => {
               checkOut: checkOutDisplay,
               status: todayData.attendanceStatus,
             });
-            if (todayData.checkIn) checkinInput.value = todayData.checkIn + (todayData.lateEntry ? ' (L)' : '');
-            if (todayData.checkOut) checkoutInput.value = todayData.checkOut + (todayData.earlyCheckout ? ' (EC)' : '');
             if (todayData.checkIn) {
-              checkoutBtn.disabled = false;
-              checkoutInput.disabled = false;
+              // Don't set the checkinInput value here - let it remain empty for fresh check-in
+              // Only enable the checkout button if check-in exists AND no check-out yet
+              if (!todayData.checkOut) {
+                checkoutBtn.disabled = false;
+                checkoutInput.disabled = false;
+              } else {
+                // If already checked out, disable check-out button
+                checkoutBtn.disabled = true;
+                checkoutInput.disabled = true;
+              }
+            } else {
+              checkinInput.value = '';
+              checkoutBtn.disabled = true;
+              checkoutInput.disabled = true;
             }
-            lateCountDisplay.textContent = `Late Count (This Month): ${data.lateCount || 0}`;
-            let elCountSpan = document.getElementById("earlyCheckoutCountDisplay");
-            if (!elCountSpan) {
-              elCountSpan = document.createElement("span");
-              elCountSpan.id = "earlyCheckoutCountDisplay";
-              elCountSpan.style = "font-weight:bold;color:#ff9800;margin-left:1.5rem;";
-              lateCountDisplay.parentNode.appendChild(elCountSpan);
+            if (todayData.checkOut) {
+              checkoutInput.value = todayData.checkOut + (todayData.earlyCheckout ? ' (EC)' : '');
+              // Disable check-out button if already checked out
+              checkoutBtn.disabled = true;
+              checkoutInput.disabled = true;
             }
-            elCountSpan.textContent = `Early Logout (This Month): ${data.earlyCheckoutCount || 0}`;
+            // Do NOT show late/early counts here, only after check-in/check-out
+          } else {
+            // No attendance for today, disable checkout
+            checkinInput.value = '';
+            checkoutInput.value = '';
+            checkoutBtn.disabled = true;
+            checkoutInput.disabled = true;
           }
         }
       }
@@ -5898,10 +5993,11 @@ function attachManageEmployeeNameSearch() {
         });
         const data = await res.json();
         if (data.success && data.employees.length) {
-          dropdown.innerHTML = `<div style='position:absolute;z-index:1000;background:#fff;border:1px solid #ccc;width:100%;max-height:180px;overflow:auto;'>${data.employees.map(emp => `<div class='dropdown-item' style='padding:8px;cursor:pointer;' data-id='${emp.employeeId}'>${emp.firstName || emp.name || ''} ${emp.lastName || ''} <span style='color:#764ba2;font-weight:bold;'>(${emp.employeeId})</span></div>`).join('')}</div>`;
+          dropdown.innerHTML = `<div style='position:absolute;z-index:1000;background:#fff;border:1px solid #ccc;width:100%;max-height:180px;overflow:auto;'>${data.employees.map(emp => `<div class='dropdown-item' style='padding:8px;cursor:pointer;color:#8C001A;' data-id='${emp.employeeId}' data-name='${displayName.replace(/'/g, "&#39;")}' >${displayName} <span style='color:#764ba2;font-weight:bold;'>(${emp.employeeId})</span></div>`).join('')}</div>`;
           dropdown.querySelectorAll('.dropdown-item').forEach(item => {
             item.onclick = function(e) {
               idInput.value = this.getAttribute('data-id');
+              nameInput.value = this.getAttribute('data-name');
               dropdown.innerHTML = "";
               e.stopPropagation();
             };
@@ -5917,8 +6013,6 @@ function attachManageEmployeeNameSearch() {
     });
   }
 }
-// ... existing code ...
-// --- Add this inside loadStats after rendering the form ---
 function attachStatsNameSearch(resultDiv) {
   const nameInputStats = document.getElementById("searchEmployeeName");
   const idInputStats = document.getElementById("searchEmployeeId");
@@ -5956,7 +6050,6 @@ function attachStatsNameSearch(resultDiv) {
     });
   }
 }
-// ... existing code ...
 
 // Move this function to top-level and attach to window
 window.fetchEmployeeDetails = function(employeeId, resultDiv) {
@@ -6512,5 +6605,7 @@ function setupTeamCreationForm() {
   }
 
 }
+// ... existing code ...
+// ... existing code ...
 
 
