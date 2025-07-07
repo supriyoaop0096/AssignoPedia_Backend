@@ -1871,7 +1871,7 @@ width:80vw;
 @media (min-width: 1024px) and (max-width: 1366px) {
   /* iPad Pro */
   .notice-board-section {
-    max-width: 95vw;
+    max-width: 75vw;
     padding: 2rem 2.5rem 1.5rem 2.5rem;
   }
   .notice-actions {
@@ -1947,7 +1947,7 @@ width:80vw;
   max-height: 320px;
   overflow-y: auto;
   padding-right: 4px;
-  width:1000px;
+  width:98%;
 }
 #notificationsList::-webkit-scrollbar {
   width: 7px;
@@ -2152,8 +2152,8 @@ width:80vw;
   border-radius: 18px;
   background: rgba(255,255,255,0.13);
   box-shadow: 0 8px 32px rgba(67, 206, 162, 0.18), 0 3px 16px rgba(118, 75, 162, 0.13);
-  width: 98vw;
-  max-width: 1200px;
+  width: 78vw;
+  max-width: 1000px;
   display: flex;
   flex-direction: column;
   align-items: center;
