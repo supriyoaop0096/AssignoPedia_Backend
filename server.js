@@ -182,14 +182,14 @@ const attendanceSchema = new mongoose.Schema(
 attendanceSchema.index({ employeeId: 1, date: 1 }, { unique: true });
 const Attendance = conn.model("Attendance", attendanceSchema);
 // const attendanceData = {
-//   employeeId: "AOP0036",
-//   employeeName: "Hemika Mondal",
+//   employeeId: "AOP0099",
+//   employeeName: "Sovraj Dey",
 //   date: "2025-07-02T00:00:00.000+00:00",
 //   status: "Present",
-//   checkIn: "11:27",
-//   checkOut: "18:25",
+//   checkIn: "11:22",
+//   checkOut: "18:50",
 //   lateEntry: false,
-//   lateCount: 0,
+//   lateCount: 1,
 //   earlyCheckout: false,
 //   earlyCheckoutCount: 0,
 //   createdAt: new Date(),
@@ -854,6 +854,29 @@ app.post(
           if (recipient.email) {
             await sendNoticeEmail({
               to: recipient.email,
+              subject: `New Leave Request - ${name}`,
+              text: `A new leave request has been submitted:\n\nEmployee: ${name} (${employeeId})\nReason: ${reason}\nDuration: ${leaveCount} days\nFrom: ${from.toDateString()}\nTo: ${to.toDateString()}\n\nPlease review and approve/reject this request.`
+            });
+          }
+        }
+        // --- Notify Team Leader if not already notified ---
+        const team = await Team.findOne({ team_members: employeeId });
+        const teamLeaderId = team?.team_leader;
+        if (teamLeaderId && !allRecipients.some(r => r.employeeId === teamLeaderId)) {
+          const notification = new Notification({
+            message: `New leave request from ${name} (${employeeId}) for ${leaveCount} days from ${from.toDateString()} to ${to.toDateString()}`,
+            senderId: employeeId,
+            senderName: name,
+            recipientId: teamLeaderId,
+            isForAll: false,
+            comments,
+            reason,
+          });
+          await notification.save();
+          const teamLeader = await Employee.findOne({ employeeId: teamLeaderId });
+          if (teamLeader?.email) {
+            await sendNoticeEmail({
+              to: teamLeader.email,
               subject: `New Leave Request - ${name}`,
               text: `A new leave request has been submitted:\n\nEmployee: ${name} (${employeeId})\nReason: ${reason}\nDuration: ${leaveCount} days\nFrom: ${from.toDateString()}\nTo: ${to.toDateString()}\n\nPlease review and approve/reject this request.`
             });
@@ -1584,6 +1607,27 @@ app.post("/api/wfh-request", authenticateToken, wfhAttachmentUpload.single("atta
       if (recipient.email) {
         await sendNoticeEmail({
           to: recipient.email,
+          subject: `New WFH Request - ${employeeName}`,
+          text: `A new WFH request has been submitted:\n\nEmployee: ${employeeName} (${employeeId})\nRole: ${employeeRole}\nReason: ${reason}\nDuration: ${wfhCount} days\nFrom: ${fromDate}\nTo: ${toDate}\n\nPlease review and approve/reject this request.`
+        });
+      }
+    }
+    // --- Notify Team Leader if not already notified ---
+    const team = await Team.findOne({ team_members: employeeId });
+    const teamLeaderId = team?.team_leader;
+    if (teamLeaderId && !allRecipients.some(r => r.employeeId === teamLeaderId)) {
+      const notification = new Notification({
+        message: `New WFH request from ${employeeName} (${employeeId}) for ${wfhCount} days from ${fromDate} to ${toDate}`,
+        senderId: employeeId,
+        senderName: employeeName,
+        recipientId: teamLeaderId,
+        isForAll: false
+      });
+      await notification.save();
+      const teamLeader = await Employee.findOne({ employeeId: teamLeaderId });
+      if (teamLeader?.email) {
+        await sendNoticeEmail({
+          to: teamLeader.email,
           subject: `New WFH Request - ${employeeName}`,
           text: `A new WFH request has been submitted:\n\nEmployee: ${employeeName} (${employeeId})\nRole: ${employeeRole}\nReason: ${reason}\nDuration: ${wfhCount} days\nFrom: ${fromDate}\nTo: ${toDate}\n\nPlease review and approve/reject this request.`
         });
