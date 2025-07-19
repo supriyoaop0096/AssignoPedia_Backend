@@ -226,7 +226,64 @@ let isAdminRole = false;
 let isHRRole = false;
 let isBDMorTL = false;
 let isRegularEmployee = false;
+let isAdminOrHRRecruiter = false;
 let mainContent = null;
+
+// Make renderPaySlipHTML globally available
+function renderPaySlipHTML(slip, isPreviewOnly = false) {
+  return `
+    <div class="payslip-container" style="margin:24px auto;">
+      <div class="payslip-header">
+        <img src="images/logo.png" alt="AssignOpedia Logo" class="payslip-logo">
+        <div class="payslip-title-block">
+          <div class="payslip-title">AssignOpedia</div>
+          <div class="payslip-period">Pay slip for the Month of <span>${slip.month}/${slip.year}</span></div>
+        </div>
+      </div>
+      <h2 style="text-align:center;margin:18px 0 10px 0;font-size:1.3em;color:#4b2e83;">Pay Slip</h2>
+      <table class="payslip-table" style="margin-bottom:0;table-layout:fixed;width:100%;word-break:break-word;">
+        <colgroup>
+          <col style="width:23%"><col style="width:17%">
+          <col style="width:23%"><col style="width:17%">
+          <col style="width:23%"><col style="width:17%">
+          <col style="width:23%"><col style="width:17%">
+        </colgroup>
+        <tr>
+          <th>Employee No.</th><td>${slip.employeeId || ''}</td>
+          <th>Designation</th><td>${slip.designation || ''}</td>
+          <th>Posting/Location</th><td>${slip.address || ''}</td>
+          <th>Employee PAN No</th><td style="white-space:normal;">${slip.panNo || ''}</td>
+        </tr>
+        <tr>
+          <th>Employee Name</th><td>${slip.name || ''}</td>
+          <th>Date of Joining</th><td>${slip.doj ? new Date(slip.doj).toLocaleDateString() : ''}</td>
+          <td colspan="4"></td>
+        </tr>
+      </table>
+      <table class="payslip-table" style="margin-top:0;"><tr><th>CTC/month</th><td colspan="7">₹${slip.ctc||'0.00'}</td></tr></table>
+      <div class="payslip-section-title">Attendance</div>
+      <table class="payslip-table">
+        <tr><th>Working Days</th><td>${slip.attendance?.workingDays||slip.attendance?.totalDays||''}</td><th>Weekend Days</th><td>${slip.attendance?.weekendDays||''}</td><th>CL</th><td>${slip.attendance?.cl||''}</td><th>SL</th><td>${slip.attendance?.sl||''}</td></tr>
+        <tr><th>PL</th><td>${slip.attendance?.pl||''}</td><th>NPL</th><td>${slip.attendance?.npl||''}</td><th>DNPL</th><td>${slip.attendance?.dnpl||''}</td><th>Unpaid Leave</th><td>${slip.attendance?.unpaidLeave||''}</td></tr>
+        <tr><th>Total Days</th><td>${slip.attendance?.totalDays||''}</td><th colspan="6"></th></tr>
+      </table>
+      <div class="payslip-section-title">Monthly Earnings</div>
+      <table class="payslip-table">
+        <tr><th>Basic</th><td>${slip.earnings?.basic?.toFixed(2)||'0.00'}</td><th>HRA</th><td>${slip.earnings?.hra?.toFixed(2)||'0.00'}</td><th>Special Allowance</th><td>${slip.earnings?.specialAllowance?.toFixed(2)||'0.00'}</td><th>Total Earnings</th><td>${slip.earnings?.totalEarnings?.toFixed(2)||'0.00'}</td></tr>
+      </table>
+      <div class="payslip-section-title">Deductions</div>
+      <table class="payslip-table">
+        <tr><th>EPF</th><td>0.00</td><th>P. Tax</th><td>0.00</td><th>Advance</th><td>0.00</td><th>Total Deductions</th><td>${isPreviewOnly ? `<input type="number" id="editTotalDeductions" value="${slip.deductions?.totalDeductions?.toFixed(2)||'0.00'}" style="width:90px;" />` : (slip.deductions?.totalDeductions?.toFixed(2)||'0.00')}</td></tr>
+      </table>
+      <table class="payslip-table" style="margin-top:0;">
+        <tr><th>Net Pay: Rs.</th><td colspan="7">${isPreviewOnly ? `<input type="number" id="editNetPay" value="${slip.netPay?.toFixed(2)||'0.00'}" style="width:130px;" />` : (slip.netPay?.toFixed(2)||'0.00')}</td></tr>
+        <tr><td colspan="8" style="font-size:0.98em;color:#555;">Net Salary Credited to Your, Bank Account Number</td></tr>
+      </table>
+      <div class="payslip-footer">Rupees <span>${slip.netPayWords||''}</span><br><span style="font-size:0.97em;">This is computer generated print, does not require any signature.</span><div class="payslip-signature">AssignOpedia HR/Admin</div></div>
+    </div>
+  `;
+}
+
 function setActive(buttonId) {
   document.querySelectorAll(".sidebar-btn").forEach((btn) => btn.classList.remove("active"));
   const activeBtn = document.getElementById(buttonId);
@@ -282,6 +339,7 @@ document.addEventListener("DOMContentLoaded", () => {
     employee.role === "hr_recruiter";
   isBDMorTL = employee.role === "bdm" || employee.role === "team_leader" || employee.role === "tl";
   isRegularEmployee = !isAdminRole && !isHRRole && !isBDMorTL;
+  isAdminOrHRRecruiter = employee.role === "admin" || employee.role === "hr_recruiter";
   // mainContent = document.getElementById("mainContent"); // Remove this redeclaration
 
   // Enhanced Access Control Summary:
@@ -670,10 +728,40 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
     }
+    
+      if (!document.getElementById('btn-pay-slip-view')) {
+        const paySlipViewBtn = document.createElement('button');
+        paySlipViewBtn.id = 'btn-pay-slip-view';
+        paySlipViewBtn.className = 'sidebar-btn';
+        paySlipViewBtn.innerHTML = '<i class="fas fa-file-invoice-dollar"></i> Pay Slip View';
+        // Insert after Pay Slip Admin if present, else before Attendance
+        const paySlipAdminBtn = document.getElementById('btn-pay-slip');
+        if (paySlipAdminBtn && paySlipAdminBtn.nextSibling) {
+          sidebarNav.insertBefore(paySlipViewBtn, paySlipAdminBtn.nextSibling);
+        } else if (paySlipAdminBtn) {
+          sidebarNav.appendChild(paySlipViewBtn);
+        } else {
+          const attendanceBtn = document.getElementById('btn-attendance');
+          if (attendanceBtn) {
+            sidebarNav.insertBefore(paySlipViewBtn, attendanceBtn);
+          } else {
+            sidebarNav.appendChild(paySlipViewBtn);
+          }
+        }
+        paySlipViewBtn.addEventListener('click', () => {
+          setActive('btn-pay-slip-view');
+          loadPaySlipView();
+          if (window.innerWidth <= 768) {
+            document.getElementById('sidebar').classList.remove('show');
+            document.getElementById('sidebarOverlay').classList.remove('active');
+          }
+        });
+      }
+    
   }
 
   // Add Word Count Entry button to sidebar for BDM/TL only (not admin/HR)
-  if (isBDMorTL) {
+  if (isBDMorTL || isAdminOrHRRecruiter) {
     const sidebarNav = document.querySelector(".sidebar-nav");
     if (!document.getElementById("btn-word-count-entry")) {
       const wordCountBtn = document.createElement("button");
@@ -2175,24 +2263,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
                 <hr />
                 <div class="form-group">
-                  <label for="basic">Basic Salary</label>
-                  <input type="number" id="basic" placeholder="Enter Basic Salary" />
-                </div>
-                <div class="form-group">
-                  <label for="hra">HRA</label>
-                  <input type="number" id="hra" placeholder="Enter HRA" />
-                </div>
-                <div class="form-group">
-                  <label for="allowance">Special Allowance</label>
-                  <input type="number" id="allowance" placeholder="Enter Special Allowance" />
-                </div>
-                <div class="form-group">
-                  <label for="deductions">Deductions</label>
-                  <input type="number" id="deductions" placeholder="Enter Deductions" />
-                </div>
-                <div class="form-group">
-                  <label for="netSalary">Net Salary</label>
-                  <input type="text" id="netSalary" placeholder="Net Salary" readonly />
+                  <label for="totalEarningsInput">Total Earnings</label>
+                  <input type="number" id="totalEarningsInput" placeholder="Enter Total Earnings" required />
                 </div>
                 <div class="button-group">
                   <button type="button" class="cancel-btn" onclick="clearForm()">Cancel</button>
@@ -2284,66 +2356,177 @@ document.addEventListener("DOMContentLoaded", () => {
     `;
     document.head.appendChild(style);
 
-    // Add event listeners
-    // const inputs = ["basic", "hra", "allowance", "deductions"];
-    // inputs.forEach((id) => {
-    //   document.getElementById(id).addEventListener("input", calculateNet);
-    // });
-
-    // Add functions
-    window.calculateNet = function () {
-      const basic = parseFloat(document.getElementById("basic").value) || 0;
-      const hra = parseFloat(document.getElementById("hra").value) || 0;
-      const allowance = parseFloat(document.getElementById("allowance").value) || 0;
-      const deductions = parseFloat(document.getElementById("deductions").value) || 0;
-      const net = basic + hra + allowance - deductions;
-      document.getElementById("netSalary").value = net.toFixed(2);
-    };
-    const inputs = ["basic", "hra", "allowance", "deductions"];
-    inputs.forEach((id) => {
-      document.getElementById(id).addEventListener("input", calculateNet);
-    });
     window.clearForm = function () {
       document.querySelectorAll("input, select").forEach((el) => (el.value = ""));
     };
 
     // Add form submission handler
-    document.getElementById("paySlipForm").addEventListener("submit", async function (e) {
+    document.getElementById("paySlipForm").addEventListener("submit", function (e) {
       e.preventDefault();
 
-      const formData = {
-        employeeId: document.getElementById("empId").value,
-        month: document.getElementById("month").value,
-        year: document.getElementById("year").value,
-        basicSalary: parseFloat(document.getElementById("basic").value) || 0,
-        hra: parseFloat(document.getElementById("hra").value) || 0,
-        specialAllowance: parseFloat(document.getElementById("allowance").value) || 0,
-        deductions: parseFloat(document.getElementById("deductions").value) || 0,
-        netSalary: parseFloat(document.getElementById("netSalary").value) || 0,
-      };
+      const employeeId = document.getElementById("empId").value.trim();
+      const month = document.getElementById("month").value.trim();
+      const year = document.getElementById("year").value.trim();
+      const totalEarningsRaw = document.getElementById("totalEarningsInput").value.trim();
+      const totalEarnings = parseFloat(totalEarningsRaw);
 
-      try {
-        const response = await fetch("/api/pay-slip", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("jwtToken")}`,
-          },
-          body: JSON.stringify(formData),
-        });
-
-        const data = await response.json();
-        if (response.ok) {
-          alert("Pay Slip Generated Successfully!");
-          clearForm();
-        } else {
-          alert(data.message || "Failed to generate pay slip");
-        }
-      } catch (error) {
-        console.error("Error:", error);
-        alert("An error occurred. Please try again.");
+      // Strict validation
+      if (!employeeId) {
+        alert("Employee ID is required.");
+        return;
       }
+      if (!month || isNaN(Number(month)) || Number(month) < 1 || Number(month) > 12) {
+        alert("Valid month (1-12) is required.");
+        return;
+      }
+      if (!year || isNaN(Number(year)) || year.length !== 4) {
+        alert("Valid 4-digit year is required.");
+        return;
+      }
+      if (!totalEarningsRaw || isNaN(totalEarnings) || totalEarnings <= 0) {
+        alert("Total Earnings must be a positive number.");
+        return;
+      }
+
+      // Compose preview slip (simulate what backend would do, but don't save)
+      const slipPreview = {
+        employeeId,
+        month,
+        year,
+        totalEarnings
+      };
+      showPaySlipProceedModal(slipPreview);
     });
+
+    function showPaySlipProceedModal(formData) {
+      // Remove any existing modal
+      const existingModal = document.getElementById('paySlipModal');
+      if (existingModal) existingModal.remove();
+      const modalHTML = `
+        <div id="paySlipModal" class="modal-overlay" style="display:flex;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.45);z-index:9999;justify-content:center;align-items:center;">
+          <div class="modal-content" style="background:#fff;border-radius:12px;max-width:500px;width:95vw;max-height:90vh;overflow:auto;box-shadow:0 4px 32px rgba(0,0,0,0.18);padding:2rem 2rem 1.5rem 2rem;position:relative;display:flex;flex-direction:column;align-items:center;">
+            <h2 style="margin-bottom:1.5rem;color:#764ba2;">Proceed to Pay Slip Preview</h2>
+            <p style="margin-bottom:2rem;font-size:1.1em;text-align:center;color:chocolate;font-style:oblique;">Are you sure you want to generate the pay slip for <b>${formData.employeeId}</b> for <b>${formData.month}/${formData.year}</b>?</p>
+            <div style="display:flex;justify-content:flex-end;gap:1rem;width:100%;">
+              <button id="cancelPaySlipModalBtn" class="cancel-btn" style="padding:10px 28px;font-size:1.1em;">Cancel</button>
+              <button id="proceedPaySlipModalBtn" class="generate-btn" style="padding:10px 28px;font-size:1.1em;">Proceed</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', modalHTML);
+      document.getElementById('cancelPaySlipModalBtn').onclick = closePaySlipModal;
+      document.getElementById('proceedPaySlipModalBtn').onclick = async function() {
+        closePaySlipModal();
+        // Fetch/generate pay slip preview from backend (do NOT store in DB)
+        try {
+          const response = await fetch("/api/payslip/preview", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${localStorage.getItem("jwtToken")}`,
+            },
+            body: JSON.stringify(formData),
+          });
+          const data = await response.json();
+          if (response.ok && data.success && data.payslip) {
+            // Step 2: Show pay slip preview modal with editable fields and Save/Cancel
+            showPaySlipModal(data.payslip, true);
+          } else {
+            alert(data.message || "Failed to generate pay slip preview.");
+          }
+        } catch (err) {
+          alert("Error generating pay slip preview.");
+        }
+      };
+    }
+
+    function showPaySlipModal(slipData, isPreviewOnly) {
+      // Remove any existing modal before inserting a new one
+      const existingModal = document.getElementById('paySlipModal');
+      if (existingModal) existingModal.remove();
+    const paySlipModalHTML = `
+        <div id="paySlipModal" class="modal-overlay" style="display:flex;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.45);z-index:9999;justify-content:center;align-items:center;">
+        <div class="modal-content" style="background:#fff;border-radius:12px;max-width:900px;width:98vw;max-height:95vh;overflow:auto;box-shadow:0 4px 32px rgba(0,0,0,0.18);padding:0;position:relative;">
+          <div id="paySlipPreviewContainer"></div>
+          <div style="display:flex;justify-content:flex-end;gap:1rem;padding:18px 32px 18px 0;background:#faf9fd;border-top:1px solid #eee;">
+            <button id="cancelPaySlipModalBtn" class="cancel-btn" style="padding:10px 28px;font-size:1.1em;">Cancel</button>
+            <button id="savePaySlipModalBtn" class="generate-btn" style="padding:10px 28px;font-size:1.1em;">Save</button>
+            ${slipData.slipId ? `<a href="/api/payslip/download/${slipData.slipId}" target="_blank" class="download-btn" style="padding:10px 28px;font-size:1.1em;background:#43cea2;color:#fff;border:none;border-radius:6px;text-decoration:none;">Download PDF</a>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', paySlipModalHTML);
+      // Render the pay slip preview using slipData
+      const container = document.getElementById('paySlipPreviewContainer');
+      if (!container) return;
+      container.innerHTML = renderPaySlipHTML(slipData, isPreviewOnly);
+      // Add swipe/scroll hint for mobile
+      if (window.innerWidth <= 600) {
+        const hint = document.createElement('div');
+        hint.className = 'swipe-hint';
+        hint.innerHTML = '<span class="swipe-icon"></span> Swipe to see full pay slip';
+        container.parentNode.appendChild(hint);
+      }
+      // Attach save handler only if not already attached
+      const saveBtn = document.getElementById('savePaySlipModalBtn');
+      saveBtn.onclick = async function() {
+        // Before sending, update slipData with edited values
+        if (isPreviewOnly) {
+          const totalDedInput = document.getElementById('editTotalDeductions');
+          const netPayInput = document.getElementById('editNetPay');
+          if (totalDedInput && !isNaN(+totalDedInput.value)) {
+            slipData.deductions = slipData.deductions || {};
+            slipData.deductions.totalDeductions = +totalDedInput.value;
+          }
+          if (netPayInput && !isNaN(+netPayInput.value)) {
+            slipData.netPay = +netPayInput.value;
+          }
+        }
+        // Now send slipData to backend as before
+        if (!isPreviewOnly) {
+          closePaySlipModal();
+          alert('Pay Slip saved successfully!');
+          clearForm();
+          return;
+        }
+        // Actually save to backend now
+        try {
+          const response = await fetch("/api/payslip/generate", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${localStorage.getItem("jwtToken")}`,
+            },
+            body: JSON.stringify(slipData),
+          });
+          let data = {};
+          try { data = await response.json(); } catch (err) {}
+          if (response.ok && data.payslip) {
+            // Re-render modal with full payslip data from backend
+            closePaySlipModal();
+            showPaySlipModal(data.payslip, false); // Not preview mode, disables save
+          } else {
+            let msg = data.message || "Failed to save pay slip";
+            if (data.error) msg += `\nDetails: ${data.error}`;
+            alert(msg);
+          }
+        } catch (error) {
+          alert("An error occurred. Please try again.\n" + (error.message || error));
+        }
+      };
+      // In showPaySlipModal, after rendering, if isPreviewOnly is false, hide the Save button
+      if (!isPreviewOnly) {
+        const saveBtn = document.getElementById('savePaySlipModalBtn');
+        if (saveBtn) saveBtn.style.display = 'none';
+      }
+      document.getElementById('cancelPaySlipModalBtn').onclick = closePaySlipModal;
+    }
+    function closePaySlipModal() {
+      const modal = document.getElementById('paySlipModal');
+      if (modal) modal.remove();
+    }
 
     setLogoutListener();
     injectProfileSidebar();
@@ -4378,7 +4561,6 @@ function injectProfileSidebar() {
         } ${emp.idCardNumber || ""}</div>
       `;
       //console.log("Profile content rendered successfully"); // Debug log
-      
        //console.log("manageAccountBtnContainer:", document.getElementById("manageAccountBtn")); // Debug log
     //  document.getElementById("manageAccountBtn").onclick = handleManageAccountClick;
     //document.getElementById("manageAccountBtn").addEventListener("click", handleManageAccountClick);
@@ -4549,19 +4731,39 @@ async function loadLeaveTracker() {
             <td class='leave-dates-cell' data-label='Leave Dates'>${leaveDates}</td>
             <td class='leave-count-cell' data-label='Leave Count'>${lr.leaveCount}</td>
             <td class="leave-type-cell" data-label='Leave Type'>`;
-        if (lr.editable) {
+        if (lr.editable && lr.leaveDates && lr.leaveDates.length > 1) {
+          hasPending = true;
+          html += `<div style="display:flex;flex-direction:column;gap:4px;">`;
+          (lr.leaveDates || []).forEach((date, idx) => {
+            const currentType = Array.isArray(lr.leaveType) ? lr.leaveType[idx] : lr.leaveType;
+            html += `<div style='display:flex;align-items:center;gap:6px;'>
+              <span style='min-width:90px;font-size:0.97em;'>${new Date(date).toLocaleDateString()}</span>
+              <select class="leave-type-select" data-idx="${idx}">
+                <option value="Pending"${currentType === "Pending" ? " selected" : ""}>Pending</option>
+                <option value="CL"${currentType === "CL" ? " selected" : ""}>CL</option>
+                <option value="SL"${currentType === "SL" ? " selected" : ""}>SL</option>
+                <option value="NPL"${currentType === "NPL" ? " selected" : ""}>NPL</option>
+                <option value="DNPL"${currentType === "DNPL" ? " selected" : ""}>DNPL</option>
+              </select>
+            </div>`;
+          });
+          html += `</div>`;
+        } else if (lr.editable) {
           hasPending = true;
           html += `<select class="leave-type-select">
-              <option value="Pending"${
-                lr.leaveType === "Pending" ? " selected" : ""
-              }>Pending</option>
+              <option value="Pending"${lr.leaveType === "Pending" ? " selected" : ""}>Pending</option>
               <option value="CL"${lr.leaveType === "CL" ? " selected" : ""}>CL</option>
               <option value="SL"${lr.leaveType === "SL" ? " selected" : ""}>SL</option>
               <option value="NPL"${lr.leaveType === "NPL" ? " selected" : ""}>NPL</option>
               <option value="DNPL"${lr.leaveType === "DNPL" ? " selected" : ""}>DNPL</option>
             </select>`;
         } else {
+          // Show leaveType as text (array or string)
+          if (Array.isArray(lr.leaveType)) {
+            html += lr.leaveType.map((t, i) => `<div>${lr.leaveDates && lr.leaveDates[i] ? new Date(lr.leaveDates[i]).toLocaleDateString() + ': ' : ''}${t}</div>`).join('');
+        } else {
           html += lr.leaveType;
+          }
         }
         html += `</td>
             <td data-label='Paid'>${lr.paidLeaves}</td>
@@ -4593,9 +4795,15 @@ async function loadLeaveTracker() {
           let updates = [];
           document.querySelectorAll(".leave-tracker-table tr[data-id]").forEach((tr) => {
             const id = tr.getAttribute("data-id");
-            const select = tr.querySelector(".leave-type-select");
-            if (select) {
-              const newType = select.value;
+            const selects = tr.querySelectorAll(".leave-type-select");
+            if (selects.length > 1) {
+              // Multi-day: collect all values as array
+              const newTypes = Array.from(selects).map(sel => sel.value);
+              if (newTypes.some(t => t !== "Pending")) {
+                updates.push({ id, leaveType: newTypes });
+              }
+            } else if (selects.length === 1) {
+              const newType = selects[0].value;
               if (newType !== "Pending") {
                 updates.push({ id, leaveType: newType });
               }
@@ -4883,7 +5091,6 @@ async function loadAttendanceTracker() {
   // Attach name search dropdown logic
   attachAttendanceTrackerNameSearch();
   document.getElementById("attendanceTrackerForm").onsubmit = async function (e) {
-    // ... existing code ...
     e.preventDefault();
     const empId = document.getElementById("attTrackerEmployeeId").value.trim();
     const month = document.getElementById("attTrackerMonth").value;
@@ -5249,6 +5456,18 @@ async function loadRecentNotices() {
         if (notice.comments) {
           extraDetails += `<div style='margin-top:2px;font-size:0.97em;color:#5a3d8c;background:#eafff3;padding:4px 8px;border-radius:6px;'><strong>Comments:</strong> ${notice.comments}</div>`;
         }
+        let downloadBtn = '';
+        if (notice.payslipInfo && notice.payslipInfo.employeeId && notice.payslipInfo.month && notice.payslipInfo.year) {
+          const { employeeId, month, year } = notice.payslipInfo;
+          downloadBtn = `<a href="/api/download-payslip?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}" target="_blank" style="display:inline-block;margin-top:8px;padding:7px 18px;background:linear-gradient(90deg,#764ba2,#43cea2);color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:0.98em;">Download Pay Slip</a>`;
+        } else if (notice.message && notice.message.toLowerCase().includes('pay slip')) {
+          // Fallback: Use current employee and latest month/year (customize as needed)
+          const today = new Date();
+          const employeeId = currentEmployee.employeeId;
+          const month = (today.getMonth() + 1).toString().padStart(2, '0');
+          const year = today.getFullYear();
+          downloadBtn = `<a href="/api/download-payslip?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}" target="_blank" style="display:inline-block;margin-top:8px;padding:7px 18px;background:linear-gradient(90deg,#764ba2,#43cea2);color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:0.98em;">Download Pay Slip</a>`;
+        }
         return `
         <div class="notice-item ${!notice.readBy.includes(currentEmployee.employeeId) ? "unread" : ""}" data-notice-id="${notice._id}">
           <div class="notice-header">
@@ -5260,6 +5479,7 @@ async function loadRecentNotices() {
           </div>
           <div class="notice-message">${notice.message}</div>
           ${extraDetails}
+          ${downloadBtn}
           <div class="notice-badge">
             ${notice.isForAll ? "All Employees" : `To: ${notice.recipientId}`}
           </div>
@@ -5298,6 +5518,18 @@ async function loadNotificationsList() {
         if (notice.comments) {
           extraDetails += `<div style='margin-top:2px;font-size:0.97em;color:#5a3d8c;background:#eafff3;padding:4px 8px;border-radius:6px;'><strong>Comments:</strong> ${notice.comments}</div>`;
         }
+        let downloadBtn = '';
+        if (notice.payslipInfo && notice.payslipInfo.employeeId && notice.payslipInfo.month && notice.payslipInfo.year) {
+          const { employeeId, month, year } = notice.payslipInfo;
+          downloadBtn = `<a href="/api/download-payslip?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}" target="_blank" style="display:inline-block;margin-top:8px;padding:7px 18px;background:linear-gradient(90deg,#764ba2,#43cea2);color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:0.98em;">Download Pay Slip</a>`;
+        } else if (notice.message && notice.message.toLowerCase().includes('pay slip')) {
+          // Fallback: Use current employee and latest month/year (customize as needed)
+          const today = new Date();
+          const employeeId = currentEmployee.employeeId;
+          const month = (today.getMonth() + 1).toString().padStart(2, '0');
+          const year = today.getFullYear();
+          downloadBtn = `<a href="/api/download-payslip?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}" target="_blank" style="display:inline-block;margin-top:8px;padding:7px 18px;background:linear-gradient(90deg,#764ba2,#43cea2);color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:0.98em;">Download Pay Slip</a>`;
+        }
         return `
           <div class="notice-item ${isUnread ? "unread" : ""}" data-notice-id="${notice._id}">
             <div class="notice-header">
@@ -5309,6 +5541,7 @@ async function loadNotificationsList() {
             </div>
             <div class="notice-message">${notice.message}</div>
             ${extraDetails}
+            ${downloadBtn}
             <div class="notice-badge">
               ${notice.isForAll ? "All Employees" : "Personal"}
             </div>
@@ -5421,6 +5654,8 @@ function showProfileInMainContent() {
 }
 
 window.showProfileInMainContent = showProfileInMainContent;
+
+// ... existing code ...
 
 // Load Manage Employee Account
 function loadManageEmployee() {
@@ -5681,8 +5916,8 @@ function loadManageEmployee() {
     await updateEmployee();
   });
 
-  setLogoutListener();
-  injectProfileSidebar();
+setLogoutListener();
+injectProfileSidebar();
 }
 
 window.searchEmployee = async function() {
@@ -6168,6 +6403,8 @@ function attachAttendanceTrackerNameSearch() {
 
 // ... existing code ...
 
+
+
 // ... existing code ...
 // --- Team Management Section ---
 let localTeams = [];
@@ -6605,7 +6842,190 @@ function setupTeamCreationForm() {
   }
 
 }
-// ... existing code ...
-// ... existing code ...
 
+function loadPaySlipView() {
+  mainContent.innerHTML = `
+    <div class="pay-slip-outer" id="paySlipOuter">
+      <div class="admin-content-section pay-slip-section" id="pay-slip-view-section">
+        <div class="scrollable-form-container">
+          <div class="pay-slip-container">
+            <h2>Pay Slip View</h2>
+            <form id="paySlipViewForm" autocomplete="off">
+              <div class="form-group" style="position:relative;">
+                <label for="paySlipSearchEmployeeName">Search by Name</label>
+                <input type="text" id="paySlipSearchEmployeeName" placeholder="Type employee name..." autocomplete="off" />
+                <div id="paySlipNameSearchDropdown"></div>
+              </div>
+              <div class="form-group">
+                <label for="paySlipSearchEmployeeId">Employee ID</label>
+                <input type="text" id="paySlipSearchEmployeeId" placeholder="Employee ID" readonly />
+              </div>
+              <div class="form-group">
+                <label for="paySlipSearchMonth">Month</label>
+                <select id="paySlipSearchMonth">
+                  <option value="">Select Month</option>
+                  <option value="1">January</option>
+                  <option value="2">February</option>
+                  <option value="3">March</option>
+                  <option value="4">April</option>
+                  <option value="5">May</option>
+                  <option value="6">June</option>
+                  <option value="7">July</option>
+                  <option value="8">August</option>
+                  <option value="9">September</option>
+                  <option value="10">October</option>
+                  <option value="11">November</option>
+                  <option value="12">December</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="paySlipSearchYear">Year</label>
+                <input type="number" id="paySlipSearchYear" placeholder="Year (e.g. 2025)" min="2000" max="2100" />
+              </div>
+              <div class="form-group">
+                <button type="submit" class="search-btn" style="width:100%;margin-top:10px;">Search</button>
+              </div>
+            </form>
+            <div id="paySlipViewResult" style="margin-top:2rem;display:none;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 
+  // Attach employee name search logic
+  (function attachPaySlipNameSearch() {
+    const nameInput = document.getElementById("paySlipSearchEmployeeName");
+    const idInput = document.getElementById("paySlipSearchEmployeeId");
+    const dropdown = document.getElementById("paySlipNameSearchDropdown");
+    let nameTimeout;
+    if (nameInput && idInput && dropdown) {
+      nameInput.addEventListener("input", function() {
+        clearTimeout(nameTimeout);
+        const value = this.value.trim();
+        dropdown.innerHTML = "";
+        if (value.length < 2) return;
+        nameTimeout = setTimeout(async () => {
+          const token = localStorage.getItem("jwtToken");
+          const res = await fetch(`/api/employees/search?name=${encodeURIComponent(value)}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.success && data.employees.length) {
+            dropdown.innerHTML = `<div style='position:absolute;z-index:1000;background:#fff;border:1px solid #ccc;width:100%;max-height:180px;overflow:auto;'>${data.employees.map(emp => {
+              const displayName = `${emp.firstName || emp.name || ''} ${emp.lastName || ''}`.trim();
+              return `<div class='dropdown-item' style='padding:8px;cursor:pointer;color:#8C001A;' data-id='${emp.employeeId}' data-name='${displayName.replace(/'/g, "&#39;")}' >${displayName} <span style='color:#764ba2;font-weight:bold;'>(${emp.employeeId})</span></div>`;
+            }).join('')}</div>`;
+            dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+              item.onclick = function(e) {
+                idInput.value = this.getAttribute('data-id');
+                nameInput.value = this.getAttribute('data-name');
+                dropdown.innerHTML = "";
+                e.stopPropagation();
+              };
+            });
+          }
+        }, 300);
+      });
+      document.addEventListener('click', function(e) {
+        if (!dropdown.contains(e.target) && e.target !== nameInput) {
+          dropdown.innerHTML = "";
+        }
+      });
+    }
+  })();
+
+  // Handle pay slip search
+  document.getElementById("paySlipViewForm").addEventListener("submit", async function(e) {
+    e.preventDefault();
+    const empId = document.getElementById("paySlipSearchEmployeeId").value.trim();
+    let month = document.getElementById("paySlipSearchMonth").value.trim();
+    let year = document.getElementById("paySlipSearchYear").value.trim();
+    const resultDiv = document.getElementById("paySlipViewResult");
+    if (!empId) {
+      resultDiv.style.display = "block";
+      resultDiv.innerHTML = `<div class='error' style='color:#dc3545;font-weight:bold;'>Please select an employee from the dropdown.</div>`;
+      return;
+    }
+    // Ensure month and year are numbers (no leading zeros)
+    if (month) month = parseInt(month, 10);
+    if (year) year = parseInt(year, 10);
+    let url = `/api/payslip?employeeId=${encodeURIComponent(empId)}`;
+    if (month) url += `&month=${encodeURIComponent(month)}`;
+    if (year) url += `&year=${encodeURIComponent(year)}`;
+    resultDiv.style.display = "block";
+    resultDiv.innerHTML = '<div class="loading">Loading pay slip...</div>';
+    try {
+      const token = localStorage.getItem("jwtToken");
+      const res = await fetch(url , {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      console.log("response->",data);
+      if (res.ok && data && data.employeeId) {
+        let slip = data;
+        // Remove any existing modal
+        const existingModal = document.getElementById('paySlipModal');
+        if (existingModal) existingModal.remove();
+        const paySlipModalHTML = `
+          <div id="paySlipModal" class="modal-overlay" style="display:flex;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.45);z-index:9999;justify-content:center;align-items:center;">
+            <div class="modal-content" style="background:#fff;border-radius:12px;max-width:900px;width:98vw;max-height:95vh;overflow:auto;box-shadow:0 4px 32px rgba(0,0,0,0.18);padding:0;position:relative;">
+              <div id="paySlipPreviewContainer">${renderPaySlipHTML(slip)}</div>
+              <div style="display:flex;justify-content:flex-end;gap:1rem;padding:18px 32px 18px 0;background:#faf9fd;border-top:1px solid #eee;">
+              <button id="clearPaySlipViewBtn" class="cancel-btn" style="padding:10px 28px;font-size:1.1em;">Clear</button>
+              <button id="sendPaySlipViewBtn" class="generate-btn" style="padding:10px 28px;font-size:1.1em;">Send</button>
+              ${slip.slipId ? `<a href="/api/payslip/download/${slip.slipId}" target="_blank" class="download-btn" style="padding:10px 28px;font-size:1.1em;background:#43cea2;color:#fff;border:none;border-radius:6px;text-decoration:none;">Download PDF</a>` : ''}
+            </div>
+            <div id="paySlipSendStatus" style="margin-top:1rem;"></div>
+            </div>
+          </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', paySlipModalHTML);
+        document.getElementById("clearPaySlipViewBtn").onclick = function() {
+          const modal = document.getElementById('paySlipModal');
+          if (modal) modal.remove();
+        };
+        document.getElementById("sendPaySlipViewBtn").onclick = async function() {
+          // Call the new /api/payslip/send-notification endpoint
+          const statusDiv = document.getElementById("paySlipSendStatus");
+          statusDiv.innerHTML = '<span style="color:#764ba2;font-weight:bold;">Sending pay slip notification...</span>';
+          try {
+            const token = localStorage.getItem("jwtToken");
+            // Use employeeId, month, year for notification
+            if (!empId || !month || !year) {
+              statusDiv.innerHTML = `<span style='color:#dc3545;font-weight:bold;'>Error sending pay slip notification: employeeId, month, and year are required.</span>`;
+              return;
+            }
+            const res = await fetch(`/api/payslip/send-notification`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                employeeId: empId,
+                month: month,
+                year: year,
+                message: "Your pay slip has been generated. Now click the download to generate the pay slip. Thank You."
+              })
+            });
+            const data = await res.json();
+            if (res.ok) {
+              statusDiv.innerHTML = '<span style="color:#28a745;font-weight:bold;">Pay slip notification sent successfully.</span>';
+            } else {
+              statusDiv.innerHTML = `<span style="color:#dc3545;font-weight:bold;">Error sending pay slip notification: ${data.message}</span>`;
+            }
+          } catch (err) {
+            console.log(err.message);
+            statusDiv.innerHTML = `<span style="color:#dc3545;font-weight:bold;">Error sending pay slip notification.</span>`;
+          }
+        };
+      } else {
+        resultDiv.innerHTML = `<div class='error' style='color:#dc3545;font-weight:bold;'>No pay slip found for this employee for the selected month and year.</div>`;
+      }
+    } catch (err) {
+      console.log(err.message);
+      resultDiv.innerHTML = `<div class='error' style='color:#dc3545;font-weight:bold;'>Error fetching pay slip.</div>`;
+    }
+  });
+}

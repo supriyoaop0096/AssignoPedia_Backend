@@ -9,12 +9,14 @@ const multer = require("multer");
 const { GridFsStorage } = require("multer-gridfs-storage");
 const { GridFSBucket, ObjectId, Admin } = require("mongodb");
 const nodemailer = require("nodemailer");
+const puppeteer = require('puppeteer');
 
 const app = express();
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
+
 app.use(
   cors({
     origin: "*", // for development only
@@ -144,7 +146,8 @@ const leaveRequestSchema = new mongoose.Schema(
     status: { type: String, enum: ["Pending", "Approved", "Rejected"], default: "Pending" },
     paidLeaves: { type: Number, default: 0 },
     unpaidLeaves: { type: Number, default: 0 },
-    leaveType: { type: String, enum: ["CL", "SL", "NPL", "DNPL", "Pending"], default: "Pending" },
+    leaveType: { type: [String], enum: ["CL", "SL", "NPL", "DNPL", "Pending"], default: ["Pending"] },
+    dnplCount: { type: Number, default: 0 }, // <-- Added field
     createdAt: { type: Date, default: Date.now },
     attachment: {
       data: Buffer,
@@ -230,6 +233,7 @@ const notificationSchema = new mongoose.Schema(
     readBy: { type: [String], default: [] }, // Array of employeeIds who have read
     comments: { type: String }, // <-- add this
     reason: { type: String },   // <-- add this
+    downloadUrl: { type: String }, // <-- Add this field!
   },
   { collection: "Notifications", timestamps: true }
 );
@@ -892,6 +896,13 @@ app.post(
           toDate: to,
         });
         isFirstSegment = false;
+        if (Array.isArray(leave.leaveType)) {
+          leave.dnplCount = leave.leaveType.filter(type => type === "DNPL").length;
+          await leave.save();
+        } else {
+          leave.dnplCount = 0;
+          await leave.save();
+        }
       }
       res.json({
         success: true,
@@ -1005,49 +1016,49 @@ app.get("/api/employees/stats", authenticateToken, requireAdmin, async (req, res
 });
 
 // Pay slip generation (admin/HR)
-app.post("/api/pay-slip", authenticateToken, requireHRorAdmin, async (req, res) => {
-  try {
-    const { employeeId, month, year, basicSalary, hra, specialAllowance, deductions, netSalary } =
-      req.body;
+// app.post("/api/pay-slip", authenticateToken, requireHRorAdmin, async (req, res) => {
+//   try {
+//     const { employeeId, month, year, basicSalary, hra, specialAllowance, deductions, netSalary } =
+//       req.body;
 
-    if (!employeeId || !month || !year) {
-      return res.status(400).json({
-        success: false,
-        message: "Employee ID, month, and year are required for pay slip generation.",
-      });
-    }
+//     if (!employeeId || !month || !year) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Employee ID, month, and year are required for pay slip generation.",
+//       });
+//     }
 
-    // Check if employee exists
-    const employee = await Employee.findOne({ employeeId });
-    if (!employee) {
-      return res.status(404).json({
-        success: false,
-        message: "Employee not found.",
-      });
-    }
+//     // Check if employee exists
+//     const employee = await Employee.findOne({ employeeId });
+//     if (!employee) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Employee not found.",
+//       });
+//     }
 
-    // Here you would typically save the pay slip to database
-    // For now, we'll just return success
-    res.json({
-      success: true,
-      message: "Pay slip generated successfully",
-      data: {
-        employeeId,
-        employeeName: `${employee.firstName} ${employee.lastName}`,
-        month,
-        year,
-        basicSalary,
-        hra,
-        specialAllowance,
-        deductions,
-        netSalary,
-      },
-    });
-  } catch (err) {
-    console.error("Error generating pay slip:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-});
+//     // Here you would typically save the pay slip to database
+//     // For now, we'll just return success
+//     res.json({
+//       success: true,
+//       message: "Pay slip generated successfully",
+//       data: {
+//         employeeId,
+//         employeeName: `${employee.firstName} ${employee.lastName}`,
+//         month,
+//         year,
+//         basicSalary,
+//         hra,
+//         specialAllowance,
+//         deductions,
+//         netSalary,
+//       },
+//     });
+//   } catch (err) {
+//     console.error("Error generating pay slip:", err);
+//     res.status(500).json({ success: false, message: "Server error" });
+//   }
+// });
 
 // API: Mark attendance (check-in/check-out, late entry, late count)
 app.post("/api/attendance", authenticateToken, restrictAttendanceByIP, async (req, res) => {
@@ -1371,7 +1382,7 @@ app.get("/api/leave-history", authenticateToken, requireHRorAdmin, async (req, r
         unpaidLeaves: lr.unpaidLeaves,
         status: lr.status,
         comments: lr.comments,
-        editable: lr.leaveType === "Pending",
+        editable: (Array.isArray(lr.leaveType) ? lr.leaveType.every(t => t === "Pending") : lr.leaveType === "Pending"),
       };
     });
     res.json({ success: true, leaveHistory: results });
@@ -1389,21 +1400,34 @@ app.patch(
     try {
       const { id } = req.params;
       const { leaveType } = req.body;
-      if (!leaveType || !["CL", "SL", "NPL", "DNPL"].includes(leaveType)) {
+      // Accept both string and array for leaveType
+      if (
+        !leaveType ||
+        !(
+          (typeof leaveType === "string" && ["CL", "SL", "NPL", "DNPL"].includes(leaveType)) ||
+          (Array.isArray(leaveType) && leaveType.every(t => ["CL", "SL", "NPL", "DNPL"].includes(t)))
+        )
+      ) {
         return res.status(400).json({ success: false, message: "Invalid leave type." });
       }
       const leave = await LeaveRequest.findById(id);
       if (!leave) {
         return res.status(404).json({ success: false, message: "Leave request not found." });
       }
-      // Only allow editing if leaveType is still 'Pending'
-      if (leave.leaveType !== "Pending") {
+      // Only allow editing if all leave types are still 'Pending'
+      if (
+        !(
+          (typeof leave.leaveType === "string" && leave.leaveType === "Pending") ||
+          (Array.isArray(leave.leaveType) && leave.leaveType.every(t => t === "Pending"))
+        )
+      ) {
         return res.status(400).json({
           success: false,
-          message: "Leave type can only be edited if leave type is Pending.",
+          message: "Leave type can only be edited if all leave types are Pending.",
         });
       }
       leave.leaveType = leaveType;
+      leave.dnplCount = Array.isArray(leaveType) ? leaveType.filter(t => t === "DNPL").length : (leaveType === "DNPL" ? 1 : 0);
       await leave.save();
       return res.json({ success: true, message: "Leave type updated successfully." });
     } catch (err) {
@@ -2219,3 +2243,638 @@ function getISTDateString(date = new Date()) {
 //   // Optionally, process.exit(0);
 // }
 //  migrateAttendanceDates(); // <-- Uncomment this line and restart your server to run the migration ONCE
+
+// --- One-time migration for LeaveRequest schema update ---
+// To run: Uncomment the block below and restart your server. Comment it again after migration is complete.
+
+// (async () => {
+//   //const LeaveRequest = conn.model("LeaveRequest");
+//   const all = await LeaveRequest.find({});
+//   let updated = 0;
+//   for (const doc of all) {
+//     let changed = false;
+//     // Convert leaveType to array if needed
+//     if (typeof doc.leaveType === 'string') {
+//       doc.leaveType = [doc.leaveType];
+//       changed = true;
+//     }
+//     // Add dnplCount if missing or incorrect
+//     const dnplCount = Array.isArray(doc.leaveType) ? doc.leaveType.filter(t => t === 'DNPL').length : 0;
+//     if (typeof doc.dnplCount !== 'number' || doc.dnplCount !== dnplCount) {
+//       doc.dnplCount = dnplCount;
+//       changed = true;
+//     }
+//     if (changed) {
+//       await doc.save();
+//       updated++;
+//     }
+//   }
+//   console.log(`LeaveRequest migration complete: ${updated} documents updated.`);
+// })();
+
+// --- End migration script ---
+
+const paySlipSchema = new mongoose.Schema({
+  employeeId: { type: String, required: true },
+  name: String,
+  month: Number, // 1-12
+  year: Number,
+  designation: String,
+  location: String,
+  panNo: String,
+  address: String,
+  doj: Date,
+  ctc: Number,
+  attendance: {
+    workingDays: Number,
+    weekendDays: Number,
+    cl: Number,
+    sl: Number,
+    pl: Number,
+    npl: Number,
+    dnpl: Number,
+    unpaidLeave: Number,
+    totalDays: Number
+  },
+  earnings: {
+    basic: Number,
+    hra: Number,
+    specialAllowance: Number,
+    totalEarnings: Number
+  },
+  deductions: {
+    epf: Number,
+    ptax: Number,
+    advance: Number,
+    nplDeduction: Number,
+    dnplDeduction: Number,
+    totalDeductions: Number
+  },
+  netPay: Number,
+  netPayWords: String,
+  slipData: {}, // full slip as JSON for easy rendering
+  createdAt: { type: Date, default: Date.now }
+});
+// Add virtual slipId field
+paySlipSchema.virtual('slipId').get(function() {
+  return this._id.toString();
+});
+paySlipSchema.set('toObject', { virtuals: true });
+paySlipSchema.set('toJSON', { virtuals: true });
+
+const PaySlip = conn.model('PaySlip', paySlipSchema);
+
+// Utility: Convert number to words (Indian system)
+function numberToWords(num) {
+  if (num === 0) return "Zero";
+  const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  function inWords(n) {
+    if (n < 20) return a[n];
+    if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? " " + a[n % 10] : "");
+    if (n < 1000) return a[Math.floor(n / 100)] + " Hundred" + (n % 100 ? " and " + inWords(n % 100) : "");
+    if (n < 100000) return inWords(Math.floor(n / 1000)) + " Thousand" + (n % 1000 ? " " + inWords(n % 1000) : "");
+    if (n < 10000000) return inWords(Math.floor(n / 100000)) + " Lakh" + (n % 100000 ? " " + inWords(n % 100000) : "");
+    return inWords(Math.floor(n / 10000000)) + " Crore" + (n % 10000000 ? " " + inWords(n % 10000000) : "");
+  }
+  return inWords(num);
+}
+
+// POST: Generate and store pay slip
+app.post('/api/payslip/generate', async (req, res) => {
+  try {
+    const data = req.body;
+    console.log(data);  
+    const { employeeId, month, year, totalEarnings } = data;
+    // Fetch latest employee details and merge into slip
+const employee = await Employee.findOne({ employeeId });
+if (employee) {
+  data.name = `${employee.firstName || ''} ${employee.lastName || ''}`.trim();
+  data.employeeId = employee.employeeId;
+  data.designation = employee.role || '';
+  data.address = employee.address || '';
+  data.doj = employee.doj || '';
+  data.panNo = employee.idCardNumber || '';
+}
+    if (!employeeId || !month || !year || !totalEarnings) {
+      return res.status(400).json({ success: false, message: 'employeeId, month, year, and totalEarnings are required.' });
+    }
+    // Calculate month range
+    const m = parseInt(month) - 1; // JS months are 0-based
+    const y = parseInt(year);
+    const start = new Date(y, m, 1);
+    const end = new Date(y, m + 1, 0, 23, 59, 59, 999);
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+    // Fetch leave requests for this employee in this month (approved only)
+    const leaveDocs = await LeaveRequest.find({
+      employeeId,
+      status: 'Approved',
+      $or: [
+        { fromDate: { $lte: end }, toDate: { $gte: start } },
+        { fromDate: { $gte: start, $lte: end } },
+        { toDate: { $gte: start, $lte: end } },
+      ],
+    });
+    // Count leave types for the month
+    let pl = 0, npl = 0, dnpl = 0, cl = 0, sl = 0, unpaidLeave = 0;
+    leaveDocs.forEach(lr => {
+      // For each leave, count days in this month and type
+      const from = new Date(Math.max(start, lr.fromDate));
+      const to = new Date(Math.min(end, lr.toDate));
+      let leaveDays = [];
+      for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+        if (d.getDay() !== 0) leaveDays.push(new Date(d)); // skip Sundays
+      }
+      if (Array.isArray(lr.leaveType)) {
+        lr.leaveType.forEach((type, idx) => {
+          if (!leaveDays[idx]) return;
+          if (type === 'PL') pl++;
+          else if (type === 'NPL') npl++;
+          else if (type === 'DNPL') dnpl++;
+          else if (type === 'CL') cl++;
+          else if (type === 'SL') sl++;
+          else if (type === 'Unpaid') unpaidLeave++;
+        });
+      } else {
+        // Fallback: use unpaidLeaves and dnplCount fields
+        unpaidLeave += lr.unpaidLeaves || 0;
+        dnpl += lr.dnplCount || 0;
+      }
+    });
+    // Calculate salary components from total earnings
+    const totalEarningsNum = parseFloat(totalEarnings) || 0;
+    const basic = +(totalEarningsNum * 0.7).toFixed(2);
+    const hra = +(totalEarningsNum * 0.15).toFixed(2);
+    const specialAllowance = +(totalEarningsNum * 0.15).toFixed(2);
+    // Calculate deductions
+    const nplDeduction = npl * (totalEarningsNum / daysInMonth);
+    const dnplDeduction = dnpl * 2 * (totalEarningsNum / daysInMonth);
+    const epf = 0.00, ptax = 0.00, advance = 0.00;
+    const totalDeductions = nplDeduction + dnplDeduction + epf + ptax + advance;
+    // Net pay = total earnings - total deductions
+    const calculatedNetPay = totalEarningsNum - totalDeductions;
+    const netPayWords =  numberToWords(Math.round(calculatedNetPay)) + ' Only';
+// If edited values are present, use them
+let editedTotalDeductions = data.deductions && typeof data.deductions.totalDeductions === 'number' ? data.deductions.totalDeductions : null;
+let editedNetPay = typeof data.netPay === 'number' ? data.netPay : null;
+
+const finalTotalDeductions = editedTotalDeductions !== null ? editedTotalDeductions : +totalDeductions.toFixed(2);
+const finalNetPay = editedNetPay !== null ? editedNetPay : +calculatedNetPay.toFixed(2);
+    // Compose slip
+    const slip = {
+      ...data,
+      attendance: {
+        pl,
+        npl,
+        dnpl,
+        cl,
+        sl,
+        unpaidLeave,
+        totalDays: daysInMonth
+      },
+      earnings: { basic, hra, specialAllowance, totalEarnings: totalEarningsNum },
+      deductions: {
+        epf,
+        ptax,
+        advance,
+        nplDeduction: +nplDeduction.toFixed(2),
+        dnplDeduction: +dnplDeduction.toFixed(2),
+        totalDeductions: finalTotalDeductions
+      },
+      netPay: finalNetPay,
+      netPayWords:  numberToWords(Math.round(finalNetPay)) + ' Only'
+    };
+    // Store in DB
+    const paySlipDoc = new PaySlip({
+      ...data,
+      attendance: slip.attendance,
+      earnings: slip.earnings,
+      deductions: slip.deductions,
+      netPay: slip.netPay,
+      netPayWords: slip.netPayWords,
+      slipData: slip
+    });
+    await paySlipDoc.save();
+    res.json({ success: true, payslip: slip });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Error generating pay slip', error: err.message });
+  }
+});
+
+// GET: Search pay slips by employeeId, name, month, year
+// app.get('/api/payslip', async (req, res) => {
+//   const { employeeId, month, year } = req.query;
+//   console.log(employeeId, month, year);
+//   if (!employeeId || !month || !year) return res.status(400).json({ error: 'Missing params' });
+//   try {
+//     // Fetch payslip from MongoDB
+//     const payslip = await PaySlip.findOne({
+//       employeeId,
+//       month: parseInt(month),
+//       year: parseInt(year)
+//     });
+//     console.log(payslip);
+//     if (!payslip) return res.status(404).json({ error: 'Payslip not found' });
+//     // Use top-level fields, fallback to slipData if missing
+//     const slipData = payslip.slipData || {};
+//     function getField(field) {
+//       return payslip[field] !== undefined && payslip[field] !== null && payslip[field] !== ''
+//         ? payslip[field]
+//         : slipData[field] !== undefined ? slipData[field] : '';
+//     }
+//     function getNestedField(obj, field) {
+//       return obj && obj[field] !== undefined && obj[field] !== null ? obj[field] : '';
+//     }
+//     res.json({
+//       slipId: payslip._id, // Always include slipId for notification
+//       employeeId: getField('employeeId'),
+//       month: getField('month'),
+//       year: getField('year'),
+//       monthName: new Date(Number(getField('year')), Number(getField('month')) - 1).toLocaleString('default', { month: 'long' }),
+//       designation: getField('designation'),
+//       location: getField('address'),
+//       panNo: getField('panNo'),
+//       employeeName: getField('name'),
+//       address: getField('address'),
+//       doj: getField('doj') ? new Date(getField('doj')).toLocaleDateString() : '',
+//       ctc: getNestedField(getField('earnings'), 'ctc'),
+//       workingDays: getNestedField(getField('attendance'), 'workingDays') || getNestedField(getField('attendance'), 'totalDays'),
+//       weekendDays: getNestedField(getField('attendance'), 'weekendDays'),
+//       clCount: getNestedField(getField('attendance'), 'cl'),
+//       slCount: getNestedField(getField('attendance'), 'sl'),
+//       plCount: getNestedField(getField('attendance'), 'pl'),
+//       nplCount: getNestedField(getField('attendance'), 'npl'),
+//       dnplCount: getNestedField(getField('attendance'), 'dnpl'),
+//       unpaidLeave: getNestedField(getField('attendance'), 'unpaidLeave'),
+//       totalDays: getNestedField(getField('attendance'), 'totalDays'),
+//       basic: getNestedField(getField('earnings'), 'basic'),
+//       hra: getNestedField(getField('earnings'), 'hra'),
+//       specialAllowance: getNestedField(getField('earnings'), 'specialAllowance'),
+//       totalEarnings: getNestedField(getField('earnings'), 'totalEarnings'),
+//       epf: getNestedField(getField('deductions'), 'epf'),
+//       ptax: getNestedField(getField('deductions'), 'ptax'),
+//       advance: getNestedField(getField('deductions'), 'advance'),
+//       totalDeductions: getNestedField(getField('deductions'), 'totalDeductions'),
+//       netPay: getField('netPay'),
+//       netPayWords: getField('netPayWords')
+//     });
+//   } catch (err) {
+//     res.status(500).json({ error: 'Payslip not found' });
+//   }
+// });
+
+// POST: Preview pay slip (calculate but do NOT store in DB)
+app.post('/api/payslip/preview', authenticateToken, requireHRorAdmin, async (req, res) => {
+  try {
+    const data = req.body;
+    const { employeeId, month, year, totalEarnings } = data;
+    // Fetch latest employee details and merge into slip
+const employee = await Employee.findOne({ employeeId });
+if (employee) {
+  data.name = `${employee.firstName || ''} ${employee.lastName || ''}`.trim();
+  data.employeeId = employee.employeeId;
+  data.designation = employee.role || '';
+  data.address = employee.address || '';
+  data.doj = employee.doj || '';
+  data.panNo = employee.idCardNumber || '';
+}
+    if (!employeeId || !month || !year || !totalEarnings) {
+      return res.status(400).json({ success: false, message: 'employeeId, month, year, and totalEarnings are required.' });
+    }
+    // Calculate month range
+    const m = parseInt(month) - 1; // JS months are 0-based
+    const y = parseInt(year);
+    const start = new Date(y, m, 1);
+    const end = new Date(y, m + 1, 0, 23, 59, 59, 999);
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+    // Fetch leave requests for this employee in this month (approved only)
+    const leaveDocs = await LeaveRequest.find({
+      employeeId,
+      status: 'Approved',
+      $or: [
+        { fromDate: { $lte: end }, toDate: { $gte: start } },
+        { fromDate: { $gte: start, $lte: end } },
+        { toDate: { $gte: start, $lte: end } },
+      ],
+    });
+    // Count leave types for the month
+    let pl = 0, npl = 0, dnpl = 0, cl = 0, sl = 0, unpaidLeave = 0;
+    leaveDocs.forEach(lr => {
+      const from = new Date(Math.max(start, lr.fromDate));
+      const to = new Date(Math.min(end, lr.toDate));
+      let leaveDays = [];
+      for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+        if (d.getDay() !== 0) leaveDays.push(new Date(d));
+      }
+      if (Array.isArray(lr.leaveType)) {
+        lr.leaveType.forEach((type, idx) => {
+          if (!leaveDays[idx]) return;
+          if (type === 'PL') pl++;
+          else if (type === 'NPL') npl++;
+          else if (type === 'DNPL') dnpl++;
+          else if (type === 'CL') cl++;
+          else if (type === 'SL') sl++;
+          else if (type === 'Unpaid') unpaidLeave++;
+        });
+      } else {
+        unpaidLeave += lr.unpaidLeaves || 0;
+        dnpl += lr.dnplCount || 0;
+      }
+    });
+    // Calculate salary components from total earnings
+    const totalEarningsNum = parseFloat(totalEarnings) || 0;
+    const basic = +(totalEarningsNum * 0.7).toFixed(2);
+    const hra = +(totalEarningsNum * 0.15).toFixed(2);
+    const specialAllowance = +(totalEarningsNum * 0.15).toFixed(2);
+    // Calculate deductions
+    const nplDeduction = npl * (totalEarningsNum / daysInMonth);
+    const dnplDeduction = dnpl * 2 * (totalEarningsNum / daysInMonth);
+    const epf = 0.00, ptax = 0.00, advance = 0.00;
+    const totalDeductions = nplDeduction + dnplDeduction + epf + ptax + advance;
+    const calculatedNetPay = totalEarningsNum - totalDeductions;
+    const netPayWords = numberToWords(Math.round(calculatedNetPay)) + ' Only';
+    let editedTotalDeductions = data.deductions && typeof data.deductions.totalDeductions === 'number' ? data.deductions.totalDeductions : null;
+    let editedNetPay = typeof data.netPay === 'number' ? data.netPay : null;
+    const finalTotalDeductions = editedTotalDeductions !== null ? editedTotalDeductions : +totalDeductions.toFixed(2);
+    const finalNetPay = editedNetPay !== null ? editedNetPay : +calculatedNetPay.toFixed(2);
+    const slip = {
+      ...data,
+      attendance: {
+        pl,
+        npl,
+        dnpl,
+        cl,
+        sl,
+        unpaidLeave,
+        totalDays: daysInMonth
+      },
+      earnings: { basic, hra, specialAllowance, totalEarnings: totalEarningsNum },
+      deductions: {
+        epf,
+        ptax,
+        advance,
+        nplDeduction: +nplDeduction.toFixed(2),
+        dnplDeduction: +dnplDeduction.toFixed(2),
+        totalDeductions: finalTotalDeductions
+      },
+      netPay: finalNetPay,
+      netPayWords: numberToWords(Math.round(finalNetPay)) + ' Only'
+    };
+    res.json({ success: true, payslip: slip });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Error generating pay slip preview', error: err.message });
+  }
+});
+
+// --- API: Send Pay Slip Notification to Employee ---
+app.post('/api/payslip/send-notification', authenticateToken, requireHRorAdmin, async (req, res) => {
+  try {
+    const { employeeId, month, year } = req.body;
+    if (!employeeId || !month || !year) {
+      return res.status(400).json({ success: false, message: 'employeeId, month, and year are required.' });
+    }
+    // Check if employee exists
+    const employee = await Employee.findOne({ employeeId });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: 'Employee not found.' });
+    }
+    // Check if payslip exists
+    const payslip = await PaySlip.findOne({ employeeId, month: parseInt(month), year: parseInt(year) });
+    if (!payslip) {
+      return res.status(404).json({ success: false, message: 'Pay slip not found.' });
+    }
+    // Compose download link (frontend should use this endpoint)
+    const downloadUrl = `/api/download-payslip?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`;
+    // Create notification (NO EMAIL)
+    const notification = new Notification({
+      message: 'Your pay slip has been generated. Now click the download to generate the pay slip. Thank You.',
+      senderId: req.user.employeeId,
+      senderName: req.user.name || req.user.employeeId,
+      recipientId: employeeId,
+      isForAll: false,
+      comments: '',
+      reason: '',
+      downloadUrl,
+      payslipInfo: {
+        employeeId: payslip.employeeId,
+        month: payslip.month,
+        year: payslip.year
+      }
+    });
+    await notification.save();
+    res.json({ success: true, message: 'Notification sent to employee.', notification });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+});
+
+// --- API: Download Pay Slip (PDF) ---
+app.get('/api/payslip/download/:slipId',  async (req, res) => {
+  try {
+    const { slipId } = req.params;
+    const slip = await PaySlip.findById(slipId);
+    if (!slip) {
+      return res.status(404).send('Pay slip not found');
+    }
+    // Only allow the employee, or admin/HR
+    const isAdminOrHR = ["admin", "hr_admin", "hr_manager", "hr_executive", "hr_recruiter"].includes(req.user.role);
+    if (req.user.employeeId !== slip.employeeId && !isAdminOrHR) {
+      return res.status(403).send('Forbidden');
+    }
+    const slipData = slip.slipData || slip;
+
+    // Compose filename as <EmployeeName>_<EmployeeID>.pdf
+    const safeName = (slipData.name || "Employee").replace(/[^a-zA-Z0-9_]/g, "_");
+    const safeId = (slipData.employeeId || "ID").replace(/[^a-zA-Z0-9_]/g, "_");
+    const filename = `${safeName}_${safeId}.pdf`;
+
+    // Use the same HTML/CSS as your frontend modal view (from renderPaySlipHTML)
+    const html = `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>Pay Slip - ${slipData.name} (${slipData.employeeId})</title>
+        <style>
+          body { background: #faf9fd; margin: 0; padding: 0; }
+          .payslip-container { background: #fff; margin:24px auto; border-radius: 12px; box-shadow: 0 4px 32px rgba(0,0,0,0.10); max-width: 900px; padding: 32px; }
+          .payslip-header { display: flex; align-items: center; border-bottom: 2px solid #764ba2; padding-bottom: 16px; margin-bottom: 24px; }
+          .payslip-logo { width: 80px; height: 80px; margin-right: 24px; }
+          .payslip-title-block { flex: 1; }
+          .payslip-title { font-size: 2.2em; color: #764ba2; font-weight: bold; }
+          .payslip-period { font-size: 1.1em; color: #333; margin-top: 4px; }
+          .payslip-table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+          .payslip-table th, .payslip-table td { border: 1px solid #ddd; padding: 10px 14px; font-size: 1em; }
+          .payslip-table th { background: #f3eaff; color: #764ba2; font-weight: bold; }
+          .payslip-section-title { background: #faf9fd; color: #764ba2; font-weight: bold; font-size: 1.1em; padding: 8px 0; }
+          .payslip-footer { margin-top: 32px; text-align: left; color: #888; font-size: 0.98em; }
+        </style>
+      </head>
+      <body>
+        <div class="payslip-container">
+          <div class="payslip-header">
+            <img src="https://assignopedia.com/images/logo.png" alt="AssignOpedia Logo" class="payslip-logo">
+            <div class="payslip-title-block">
+              <div class="payslip-title">AssignOpedia</div>
+              <div class="payslip-period">Pay slip for the Month of <span>${slipData.month}/${slipData.year}</span></div>
+            </div>
+          </div>
+          <h2 style="text-align:center;margin:18px 0 10px 0;font-size:1.3em;color:#4b2e83;">Pay Slip</h2>
+          <table class="payslip-table" style="margin-bottom:0;table-layout:fixed;width:100%;word-break:break-word;">
+            <tr>
+              <th>Employee No.</th><td>${slipData.employeeId || ''}</td>
+              <th>Designation</th><td>${slipData.designation || ''}</td>
+              <th>Posting/Location</th><td>${slipData.address || ''}</td>
+              <th>Employee PAN No</th><td style="white-space:normal;">${slipData.panNo || ''}</td>
+            </tr>
+            <tr>
+              <th>Employee Name</th><td>${slipData.name || ''}</td>
+              <th>Date of Joining</th><td>${slipData.doj ? (new Date(slipData.doj)).toLocaleDateString() : ''}</td>
+              <td colspan="4"></td>
+            </tr>
+          </table>
+          <table class="payslip-table" style="margin-top:0;"><tr><th>CTC/month</th><td colspan="7">₹${slipData.ctc||'0.00'}</td></tr></table>
+          <div class="payslip-section-title">Attendance</div>
+          <table class="payslip-table">
+            <tr><th>Working Days</th><td>${slipData.attendance?.workingDays||slipData.attendance?.totalDays||''}</td><th>Weekend Days</th><td>${slipData.attendance?.weekendDays||''}</td><th>CL</th><td>${slipData.attendance?.cl||''}</td><th>SL</th><td>${slipData.attendance?.sl||''}</td></tr>
+            <tr><th>PL</th><td>${slipData.attendance?.pl||''}</td><th>NPL</th><td>${slipData.attendance?.npl||''}</td><th>DNPL</th><td>${slipData.attendance?.dnpl||''}</td><th>Unpaid Leave</th><td>${slipData.attendance?.unpaidLeave||''}</td></tr>
+            <tr><th>Total Days</th><td>${slipData.attendance?.totalDays||''}</td><th colspan="6"></th></tr>
+          </table>
+          <div class="payslip-section-title">Monthly Earnings</div>
+          <table class="payslip-table">
+            <tr><th>Basic</th><td>${slipData.earnings?.basic?.toFixed(2)||'0.00'}</td><th>HRA</th><td>${slipData.earnings?.hra?.toFixed(2)||'0.00'}</td><th>Special Allowance</th><td>${slipData.earnings?.specialAllowance?.toFixed(2)||'0.00'}</td><th>Total Earnings</th><td>${slipData.earnings?.totalEarnings?.toFixed(2)||'0.00'}</td></tr>
+          </table>
+          <div class="payslip-section-title">Deductions</div>
+          <table class="payslip-table">
+            <tr><th>EPF</th><td>0.00</td><th>P. Tax</th><td>0.00</td><th>Advance</th><td>0.00</td><th>Total Deductions</th><td>${slipData.deductions?.totalDeductions?.toFixed(2)||'0.00'}</td></tr>
+          </table>
+          <table class="payslip-table" style="margin-top:0;">
+            <tr><th>Net Pay: Rs.</th><td colspan="7">${slipData.netPay?.toFixed(2)||'0.00'}</td></tr>
+            <tr><td colspan="8" style="font-size:0.98em;color:#555;">Net Salary Credited to Your, Bank Account Number</td></tr>
+          </table>
+          <div class="payslip-footer">Rupees <span>${slipData.netPayWords||''}</span><br><span style="font-size:0.97em;">This is computer generated print, does not require any signature.</span><div class="payslip-signature">AssignOpedia HR/Admin</div></div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    // Puppeteer PDF generation
+    const browser = await require('puppeteer').launch({ headless: 'new', args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+    await browser.close();
+
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.send(pdfBuffer);
+  } catch (err) {
+    res.status(500).send('Server error');
+  }
+});
+
+// --- Payslip Preview Data API ---
+app.get('/api/payslip', async (req, res) => {
+  const { employeeId, month, year } = req.query;
+  console.log(employeeId,month,year);
+  if (!employeeId || !month || !year) return res.status(400).json({ error: 'Missing params' });
+  try {
+    // Fetch payslip from MongoDB
+    
+    const payslip = await PaySlip.findOne({
+      employeeId,
+      month: parseInt(month),
+      year: parseInt(year)
+    });
+  
+    console.log(payslip);
+    if (!payslip) return res.status(404).json({ error: 'Payslip not found' });
+    // Merge slipData if present
+    let slip = payslip.toObject ? payslip.toObject() : payslip._doc || payslip;
+    console.log("SLIP->", slip);
+    if (slip.slipData && typeof slip.slipData === 'object') {
+      slip = { ...slip, ...slip.slipData };
+    }
+    // Format for preview template
+    res.json({
+      slipId: slip.slipId || slip._id,
+      employeeId: slip.employeeId,
+      month: slip.month,
+      year: slip.year,
+      monthName: new Date(slip.year, slip.month - 1).toLocaleString('default', { month: 'long' }),
+      designation: slip.designation,
+      location: slip.address,
+      panNo: slip.panNo,
+      employeeName: slip.name,
+      address: slip.address,
+      doj: slip.doj ? new Date(slip.doj).toLocaleDateString() : '',
+      ctc: slip.earnings?.ctc || '',
+      workingDays: slip.attendance?.workingDays || slip.attendance?.totalDays || '',
+      weekendDays: slip.attendance?.weekendDays || '',
+      clCount: slip.attendance?.cl || '',
+      slCount: slip.attendance?.sl || '',
+      plCount: slip.attendance?.pl || '',
+      nplCount: slip.attendance?.npl || '',
+      dnplCount: slip.attendance?.dnpl || '',
+      unpaidLeave: slip.attendance?.unpaidLeave || '',
+      totalDays: slip.attendance?.totalDays || '',
+      basic: slip.earnings?.basic || '',
+      hra: slip.earnings?.hra || '',
+      specialAllowance: slip.earnings?.specialAllowance || '',
+      totalEarnings: slip.earnings?.totalEarnings || '',
+      epf: slip.deductions?.epf || '',
+      ptax: slip.deductions?.ptax || '',
+      advance: slip.deductions?.advance || '',
+      totalDeductions: slip.deductions?.totalDeductions || '',
+      netPay: slip.netPay || '',
+      netPayWords: slip.netPayWords || ''
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Payslip not found' });
+  }
+});
+
+// --- Payslip PDF Download API ---
+// const puppeteer = require('puppeteer'); // REMOVE this duplicate line if present here
+app.get('/api/download-payslip', async (req, res) => {
+  const { employeeId, month, year } = req.query;
+  if (!employeeId || !month || !year) return res.status(400).json({ error: 'Missing params' });
+  const url = `${req.protocol}://${req.get('host')}/preview-payslip.html?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`;
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: 'networkidle0' });
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true
+    });
+    await browser.close();
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="Payslip-${employeeId}-${month}-${year}.pdf"`,
+      'Content-Length': pdfBuffer.length
+    });
+    res.send(pdfBuffer);
+  } catch (err) {
+    if (browser) await browser.close();
+    res.status(500).json({ error: 'Failed to generate PDF' });
+  }
+});
+
+// --- API routes ---
+app.get('/api/payslip', );
+app.get('/api/other-api',);
+
+// --- Static file serving ---
+app.use(express.static(path.join(__dirname, "public")));
+
+// --- Catch-all (for SPA) ---
+// THIS MUST BE LAST!
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});

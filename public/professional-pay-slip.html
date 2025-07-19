@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pay Slip - Professional Template</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #fff;
+      color: #222;
+      margin: 0;
+      padding: 0;
+    }
+    .payslip-container {
+      max-width: 800px;
+      margin: 40px auto;
+      background: #fff;
+      border: 1.5px solid #bbb;
+      border-radius: 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+      padding: 0;
+      overflow: hidden;
+    }
+    .payslip-header {
+      display: flex;
+      align-items: center;
+      border-bottom: 2px solid #eee;
+      padding: 18px 32px 10px 32px;
+      background: #f8f6ff;
+    }
+    .payslip-logo {
+      width: 60px;
+      height: 60px;
+      margin-right: 24px;
+    }
+    .payslip-title-block {
+      flex: 1;
+    }
+    .payslip-title {
+      font-size: 1.7em;
+      font-weight: 700;
+      color: #4b2e83;
+      margin: 0 0 2px 0;
+    }
+    .payslip-period {
+      font-size: 1.1em;
+      color: #555;
+      margin: 0;
+    }
+    .payslip-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0;
+      font-size: 1em;
+    }
+    .payslip-table th, .payslip-table td {
+      border: 1px solid #ddd;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    .payslip-table th {
+      background: #f3eaff;
+      color: #4b2e83;
+      font-weight: 600;
+    }
+    .payslip-section-title {
+      background: #f8f6ff;
+      color: #4b2e83;
+      font-weight: 600;
+      padding: 8px 0 8px 16px;
+      font-size: 1.1em;
+      border-left: 4px solid #4b2e83;
+      margin: 0;
+    }
+    .payslip-row-highlight {
+      background: #f8f6ff;
+    }
+    .payslip-footer {
+      font-size: 0.98em;
+      color: #666;
+      padding: 16px 32px 10px 32px;
+      border-top: 1px solid #eee;
+      background: #faf9fd;
+      text-align: left;
+    }
+    .payslip-signature {
+      font-size: 0.95em;
+      color: #888;
+      margin-top: 18px;
+      text-align: right;
+    }
+    @media (max-width: 900px) {
+      .payslip-container { max-width: 98vw; }
+      .payslip-header, .payslip-footer { padding: 12px 8vw; }
+    }
+    @media (max-width: 600px) {
+      .payslip-header, .payslip-footer { padding: 10px 2vw; }
+      .payslip-title { font-size: 1.2em; }
+    }
+  </style>
+</head>
+<body>
+  <div class="payslip-container">
+    <div class="payslip-header">
+      <img src="images/logo.png" alt="AssignOpedia Logo" class="payslip-logo">
+      <div class="payslip-title-block">
+        <div class="payslip-title">AssignOpedia</div>
+        <div class="payslip-period">Pay slip for the Month of <span id="monthYear">May 2025</span></div>
+      </div>
+    </div>
+    <h2 style="text-align:center;margin:18px 0 10px 0;font-size:1.3em;color:#4b2e83;">Pay Slip</h2>
+    <table class="payslip-table" style="margin-bottom:0;">
+      <tr>
+        <th>Employee No.</th>
+        <td id="empNo">AOPXXXX</td>
+        <th>Designation</th>
+        <td id="designation">Academic Researcher</td>
+        <th>Posting/Location</th>
+        <td id="location">Kolkata</td>
+        <th>Employee PAN No</th>
+        <td id="panNo">XXXXX0000X</td>
+      </tr>
+      <tr>
+        <th>Employee Name</th>
+        <td id="empName">Employee Name</td>
+        <th>Address</th>
+        <td id="address" colspan="3">Address Line</td>
+        <th>Date of Joining</th>
+        <td id="doj" colspan="2">01/01/2024</td>
+      </tr>
+    </table>
+    <table class="payslip-table" style="margin-top:0;">
+      <tr>
+        <th>CTC/month</th>
+        <td id="ctc" colspan="7">₹0.00</td>
+      </tr>
+    </table>
+    <div class="payslip-section-title">Attendance</div>
+    <table class="payslip-table">
+      <tr>
+        <th>Working Days</th>
+        <td id="workingDays">0</td>
+        <th>Weekend Days</th>
+        <td id="weekendDays">0</td>
+        <th>CL</th>
+        <td id="clCount">0</td>
+        <th>SL</th>
+        <td id="slCount">0</td>
+      </tr>
+      <tr>
+        <th>PL</th>
+        <td id="plCount">0</td>
+        <th>NPL</th>
+        <td id="nplCount">0</td>
+        <th>DNPL</th>
+        <td id="dnplCount">0</td>
+        <th>Unpaid Leave</th>
+        <td id="unpaidLeave">0</td>
+      </tr>
+      <tr>
+        <th>Total Days</th>
+        <td id="totalDays">0</td>
+        <th colspan="6"></th>
+      </tr>
+    </table>
+    <div class="payslip-section-title">Monthly Earnings</div>
+    <table class="payslip-table">
+      <tr>
+        <th>Basic</th>
+        <td><input type="number" id="basic" value="0.00" min="0" step="0.01" style="width:80px;"></td>
+        <th>HRA</th>
+        <td><input type="number" id="hra" value="0.00" min="0" step="0.01" style="width:80px;"></td>
+        <th>Special Allowance</th>
+        <td><input type="number" id="specialAllowance" value="0.00" min="0" step="0.01" style="width:110px;"></td>
+        <th>Total Earnings</th>
+        <td id="totalEarnings">0.00</td>
+      </tr>
+    </table>
+    <div class="payslip-section-title">Deductions</div>
+    <table class="payslip-table">
+      <tr>
+        <th>EPF</th>
+        <td><input type="number" id="epf" value="0.00" min="0" step="0.01" style="width:80px;"></td>
+        <th>P. Tax</th>
+        <td><input type="number" id="ptax" value="0.00" min="0" step="0.01" style="width:80px;"></td>
+        <th>Advance</th>
+        <td><input type="number" id="advance" value="0.00" min="0" step="0.01" style="width:80px;"></td>
+        <th>Total Deductions</th>
+        <td id="totalDeductions">0.00</td>
+      </tr>
+    </table>
+    <table class="payslip-table" style="margin-top:0;">
+      <tr>
+        <th>Net Pay: Rs.</th>
+        <td id="netPay" colspan="7">0.00</td>
+      </tr>
+      <tr>
+        <td colspan="8" style="font-size:0.98em;color:#555;">Net Salary Credited to Your, Bank Account Number</td>
+      </tr>
+    </table>
+    <div class="payslip-footer">
+      Rupees <span id="netPayWords">Zero Only</span> Only.<br>
+      <span style="font-size:0.97em;">This is computer generated print, does not require any signature.</span>
+      <div class="payslip-signature">AssignOpedia HR/Admin</div>
+    </div>
+  </div>
+  <script>
+    // Utility: Convert number to words (Indian style)
+    function numberToWords(num) {
+      if (num === 0) return "Zero";
+      const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+      const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+      function inWords(n) {
+        if (n < 20) return a[n];
+        if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? " " + a[n % 10] : "");
+        if (n < 1000) return a[Math.floor(n / 100)] + " Hundred" + (n % 100 ? " and " + inWords(n % 100) : "");
+        if (n < 100000) return inWords(Math.floor(n / 1000)) + " Thousand" + (n % 1000 ? " " + inWords(n % 1000) : "");
+        if (n < 10000000) return inWords(Math.floor(n / 100000)) + " Lakh" + (n % 100000 ? " " + inWords(n % 100000) : "");
+        return inWords(Math.floor(n / 10000000)) + " Crore" + (n % 10000000 ? " " + inWords(n % 10000000) : "");
+      }
+      return inWords(num);
+    }
+    function updatePaySlip() {
+      // Earnings
+      const basic = parseFloat(document.getElementById('basic').value) || 0;
+      const hra = parseFloat(document.getElementById('hra').value) || 0;
+      const special = parseFloat(document.getElementById('specialAllowance').value) || 0;
+      const totalEarnings = basic + hra + special;
+      document.getElementById('totalEarnings').textContent = totalEarnings.toFixed(2);
+      // Deductions
+      const epf = parseFloat(document.getElementById('epf').value) || 0;
+      const ptax = parseFloat(document.getElementById('ptax').value) || 0;
+      const advance = parseFloat(document.getElementById('advance').value) || 0;
+      const totalDeductions = epf + ptax + advance;
+      document.getElementById('totalDeductions').textContent = totalDeductions.toFixed(2);
+      // Net Pay
+      const netPay = totalEarnings - totalDeductions;
+      document.getElementById('netPay').textContent = netPay.toFixed(2);
+      // Net Pay in Words
+      const netPayInt = Math.round(netPay);
+      const words = numberToWords(netPayInt);
+      document.getElementById('netPayWords').textContent = words + ' Only';
+    }
+    // Attach listeners
+    ['basic','hra','specialAllowance','epf','ptax','advance'].forEach(id => {
+      document.getElementById(id).addEventListener('input', updatePaySlip);
+    });
+    // Initial calculation
+    updatePaySlip();
+  </script>
+</body>
+</html> 
