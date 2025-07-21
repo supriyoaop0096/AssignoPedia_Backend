@@ -2170,6 +2170,28 @@ app.get('/api/teams/public', async (req, res) => {
   }
 });
 
+// Get the team for the current team_leader
+app.get('/api/my-team', authenticateToken, async (req, res) => {
+  try {
+    const employeeId = req.user.employeeId;
+    console.log("API /api/my-team called by:", employeeId);
+    const team = await Team.findOne({ team_leader: employeeId });
+    console.log("Team found:", team);
+    if (!team) return res.json({ success: false, message: 'No team found' });
+    const allEmployees = await Employee.find();
+    res.json({
+      success: true,
+      team: {
+        ...team.toObject(),
+        team_leader_details: allEmployees.find(e => e.employeeId === team.team_leader),
+        team_members_details: team.team_members.map(id => allEmployees.find(e => e.employeeId === id)).filter(Boolean)
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // --- Migration: Populate comments and reason in old leave request notifications ---
 // async function migrateLeaveRequestNotifications() {
 //   const Notification = conn.model("Notification");
@@ -2765,6 +2787,7 @@ app.get('/api/payslip/download/:slipId',  async (req, res) => {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
     const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+    console.log(pdfBuffer);
     await browser.close();
 
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -2837,22 +2860,255 @@ app.get('/api/payslip', async (req, res) => {
 });
 
 // --- Payslip PDF Download API ---
-// const puppeteer = require('puppeteer'); // REMOVE this duplicate line if present here
+//const puppeteer = require('puppeteer'); // REMOVE this duplicate line if present here
+// app.get('/api/download-payslip', async (req, res) => {
+//   const { employeeId, month, year } = req.query;
+//   if (!employeeId || !month || !year) return res.status(400).json({ error: 'Missing params' });
+//   const url = `${req.protocol}://${req.get('host')}/preview-payslip.html?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`;
+//   let browser;
+//   try {
+//     browser = await puppeteer.launch({
+//       args: ['--no-sandbox', '--disable-setuid-sandbox']
+//     });
+//     const page = await browser.newPage();
+//     await page.goto(url, { waitUntil: 'networkidle0' });
+//     const pdfBuffer = await page.pdf({
+//       format: 'A4',
+//       printBackground: true
+//     });
+//     await browser.close();
+//     res.set({
+//       'Content-Type': 'application/pdf',
+//       'Content-Disposition': `attachment; filename="Payslip-${employeeId}-${month}-${year}.pdf"`,
+//       'Content-Length': pdfBuffer.length
+//     });
+//     res.send(pdfBuffer);
+//   } catch (err) {
+//     if (browser) await browser.close();
+//     res.status(500).json({ error: 'Failed to generate PDF' });
+//   }
+// });
+
+// // --- API routes ---
+// app.get('/api/payslip', );
+// app.get('/api/other-api',);
+
+// // --- Static file serving ---
+// app.use(express.static(path.join(__dirname, "public")));
+
+// // --- Catch-all (for SPA) ---
+// // THIS MUST BE LAST!
+// app.get("*", (req, res) => {
+//   res.sendFile(path.join(__dirname, "public", "index.html"));
+// });
+
+function numberToWords(num) {
+  if (num === 0) return "Zero";
+  const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  function inWords(n) {
+    if (n < 20) return a[n];
+    if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? " " + a[n % 10] : "");
+    if (n < 1000) return a[Math.floor(n / 100)] + " Hundred" + (n % 100 ? " and " + inWords(n % 100) : "");
+    if (n < 100000) return inWords(Math.floor(n / 1000)) + " Thousand" + (n % 1000 ? " " + inWords(n % 1000) : "");
+    if (n < 10000000) return inWords(Math.floor(n / 100000)) + " Lakh" + (n % 100000 ? " " + inWords(n % 100000) : "");
+    return inWords(Math.floor(n / 10000000)) + " Crore" + (n % 10000000 ? " " + inWords(n % 10000000) : "");
+  }
+  return inWords(num);
+}
+
+function generatePayslipHTML(payslip) {
+  // Inline CSS from preview-payslip.html
+  console.log("hi");
+  const css = `
+    <style>
+      body { font-family: 'Segoe UI', Arial, sans-serif; background: #fff; color: #222; margin: 0; padding: 0; }
+      .payslip-container { max-width: 800px; margin: 40px auto; background: #fff; border: 1.5px solid #bbb; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.07); padding: 0; overflow: hidden; }
+      .payslip-header { display: flex; align-items: center; border-bottom: 2px solid #eee; padding: 18px 32px 10px 32px; background: #f8f6ff; }
+      .payslip-logo { width: 60px; height: 60px; margin-right: 24px; }
+      .payslip-title-block { flex: 1; }
+      .payslip-title { font-size: 1.7em; font-weight: 700; color: #4b2e83; margin: 0 0 2px 0; }
+      .payslip-period { font-size: 1.1em; color: #555; margin: 0; }
+      .payslip-table { width: 100%; border-collapse: collapse; margin: 0; font-size: 1em; }
+      .payslip-table th, .payslip-table td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; }
+      .payslip-table th { background: #f3eaff; color: #4b2e83; font-weight: 600; }
+      .payslip-section-title { background: #f8f6ff; color: #4b2e83; font-weight: 600; padding: 8px 0 8px 16px; font-size: 1.1em; border-left: 4px solid #4b2e83; margin: 0; }
+      .payslip-row-highlight { background: #f8f6ff; }
+      .payslip-footer { font-size: 0.98em; color: #666; padding: 16px 32px 10px 32px; border-top: 1px solid #eee; background: #faf9fd; text-align: left; }
+      .payslip-signature { font-size: 0.95em; color: #888; margin-top: 18px; text-align: right; }
+      @media (max-width: 900px) { .payslip-container { max-width: 98vw; } .payslip-header, .payslip-footer { padding: 12px 8vw; } }
+      @media (max-width: 600px) { .payslip-header, .payslip-footer { padding: 10px 2vw; } .payslip-title { font-size: 1.2em; } }
+    </style>
+  `;
+  // HTML structure
+  return `<!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Payslip Preview</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    ${css}
+  </head>
+  <body>
+    <div class="payslip-container">
+       <div class="payslip-header">
+        <!--<img src="${payslip.logoUrl || 'file://${__dirname}/public/images/logo.png'}" alt="AssignOpedia Logo" class="payslip-logo">-->
+        <div class="payslip-title-block">
+          <div class="payslip-title">AssignOpedia</div>
+          <div class="payslip-period">Pay slip for the Month of <span id="monthYear">${payslip.monthName || ''} ${payslip.year || ''}</span></div>
+        </div>
+      </div>
+      <h2 style="text-align:center;margin:18px 0 10px 0;font-size:1.3em;color:#4b2e83;">Pay Slip</h2>
+      <table class="payslip-table" style="margin-bottom:0;">
+        <tr>
+          <th>Employee No.</th>
+          <td id="empNo">${payslip.employeeId || ''}</td>
+          <th>Designation</th>
+          <td id="designation">${payslip.designation || ''}</td>
+          <th>Posting/Location</th>
+          <td id="location">${payslip.location || ''}</td>
+          <th>Employee PAN No</th>
+          <td id="panNo">${payslip.panNo || ''}</td>
+        </tr>
+        <tr>
+          <th>Employee Name</th>
+          <td id="empName">${payslip.employeeName || ''}</td>
+          <th>Address</th>
+          <td id="address" colspan="3">${payslip.address || ''}</td>
+          <th>Date of Joining</th>
+          <td id="doj" colspan="2">${payslip.doj || ''}</td>
+        </tr>
+      </table>
+      <table class="payslip-table" style="margin-top:0;">
+        <tr>
+          <th>CTC/month</th>
+          <td id="ctc" colspan="7">${payslip.ctc || ''}</td>
+        </tr>
+      </table>
+      <div class="payslip-section-title">Attendance</div>
+      <table class="payslip-table">
+        <tr>
+          <th>Working Days</th>
+          <td id="workingDays">${payslip.workingDays || ''}</td>
+          <th>Weekend Days</th>
+          <td id="weekendDays">${payslip.weekendDays || ''}</td>
+          <th>CL</th>
+          <td id="clCount">${payslip.clCount || ''}</td>
+          <th>SL</th>
+          <td id="slCount">${payslip.slCount || ''}</td>
+        </tr>
+        <tr>
+          <th>PL</th>
+          <td id="plCount">${payslip.plCount || ''}</td>
+          <th>NPL</th>
+          <td id="nplCount">${payslip.nplCount || ''}</td>
+          <th>DNPL</th>
+          <td id="dnplCount">${payslip.dnplCount || ''}</td>
+          <th>Unpaid Leave</th>
+          <td id="unpaidLeave">${payslip.unpaidLeave || ''}</td>
+        </tr>
+        <tr>
+          <th>Total Days</th>
+          <td id="totalDays">${payslip.totalDays || ''}</td>
+          <th colspan="6"></th>
+        </tr>
+      </table>
+      <div class="payslip-section-title">Monthly Earnings</div>
+      <table class="payslip-table">
+        <tr>
+          <th>Basic</th>
+          <td id="basic">${payslip.basic || ''}</td>
+          <th>HRA</th>
+          <td id="hra">${payslip.hra || ''}</td>
+          <th>Special Allowance</th>
+          <td id="specialAllowance">${payslip.specialAllowance || ''}</td>
+          <th>Total Earnings</th>
+          <td id="totalEarnings">${payslip.totalEarnings || ''}</td>
+        </tr>
+      </table>
+      <div class="payslip-section-title">Deductions</div>
+      <table class="payslip-table">
+        <tr>
+          <th>EPF</th>
+          <td id="epf">${payslip.epf || ''}</td>
+          <th>P. Tax</th>
+          <td id="ptax">${payslip.ptax || ''}</td>
+          <th>Advance</th>
+          <td id="advance">${payslip.advance || ''}</td>
+          <th>Total Deductions</th>
+          <td id="totalDeductions">${payslip.totalDeductions || ''}</td>
+        </tr>
+      </table>
+      <table class="payslip-table" style="margin-top:0;">
+        <tr>
+          <th>Net Pay: Rs.</th>
+          <td id="netPay" colspan="7">${payslip.netPay || ''}</td>
+        </tr>
+        <tr>
+          <td colspan="8" style="font-size:0.98em;color:#555;">Net Salary Credited to Your, Bank Account Number</td>
+        </tr>
+      </table>
+      <div class="payslip-footer">
+        Rupees <span id="netPayWords">${payslip.netPayWords || numberToWords(Math.round(payslip.netPay || 0)) + ' Only'}</span><br>
+        <span style="font-size:0.97em;">This is computer generated print, does not require any signature.</span>
+        <div class="payslip-signature">AssignOpedia HR/Admin</div>
+      </div>
+    </div>
+  </body>
+  </html>`;
+}
+
 app.get('/api/download-payslip', async (req, res) => {
   const { employeeId, month, year } = req.query;
   if (!employeeId || !month || !year) return res.status(400).json({ error: 'Missing params' });
-  const url = `${req.protocol}://${req.get('host')}/preview-payslip.html?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`;
   let browser;
   try {
-    browser = await puppeteer.launch({
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    // Fetch payslip from DB (reuse logic from /api/payslip)
+    
+    const payslipDoc = await PaySlip.findOne({
+      employeeId,
+      month: parseInt(month),
+      year: parseInt(year)
     });
+    if (!payslipDoc) return res.status(404).json({ error: 'Payslip not found' });
+    let payslip = payslipDoc.toObject ? payslipDoc.toObject() : payslipDoc._doc || payslipDoc;
+    if (payslip.slipData && typeof payslip.slipData === 'object') {
+      payslip = { ...payslip, ...payslip.slipData };
+    }
+    // Format for template
+    const monthName = new Date(payslip.year, payslip.month - 1).toLocaleString('default', { month: 'long' });
+    const payslipData = {
+      ...payslip,
+      monthName,
+      doj: payslip.doj ? new Date(payslip.doj).toLocaleDateString() : '',
+      ctc: payslip.earnings?.ctc || payslip.ctc || '',
+      workingDays: payslip.attendance?.workingDays || payslip.attendance?.totalDays || payslip.workingDays || payslip.totalDays || '',
+      weekendDays: payslip.attendance?.weekendDays || payslip.weekendDays || '',
+      clCount: payslip.attendance?.cl || payslip.cl || '',
+      slCount: payslip.attendance?.sl || payslip.sl || '',
+      plCount: payslip.attendance?.pl || payslip.pl || '',
+      nplCount: payslip.attendance?.npl || payslip.npl || '',
+      dnplCount: payslip.attendance?.dnpl || payslip.dnpl || '',
+      unpaidLeave: payslip.attendance?.unpaidLeave || payslip.unpaidLeave || '',
+      totalDays: payslip.attendance?.totalDays || payslip.totalDays || '',
+      basic: payslip.earnings?.basic || payslip.basic || '',
+      hra: payslip.earnings?.hra || payslip.hra || '',
+      specialAllowance: payslip.earnings?.specialAllowance || payslip.specialAllowance || '',
+      totalEarnings: payslip.earnings?.totalEarnings || payslip.totalEarnings || '',
+      epf: payslip.deductions?.epf || payslip.epf || '',
+      ptax: payslip.deductions?.ptax || payslip.ptax || '',
+      advance: payslip.deductions?.advance || payslip.advance || '',
+      totalDeductions: payslip.deductions?.totalDeductions || payslip.totalDeductions || '',
+      netPay: payslip.netPay || '',
+      netPayWords: payslip.netPayWords || ''
+    };
+    // Generate HTML
+    const html = generatePayslipHTML(payslipData);
+    browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle0' });
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true
-    });
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+    console.log("pdfBuffer->",pdfBuffer);
     await browser.close();
     res.set({
       'Content-Type': 'application/pdf',
@@ -2862,19 +3118,7 @@ app.get('/api/download-payslip', async (req, res) => {
     res.send(pdfBuffer);
   } catch (err) {
     if (browser) await browser.close();
+    console.error("pdf generation error",err.message);
     res.status(500).json({ error: 'Failed to generate PDF' });
   }
-});
-
-// --- API routes ---
-app.get('/api/payslip', );
-app.get('/api/other-api',);
-
-// --- Static file serving ---
-app.use(express.static(path.join(__dirname, "public")));
-
-// --- Catch-all (for SPA) ---
-// THIS MUST BE LAST!
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
 });

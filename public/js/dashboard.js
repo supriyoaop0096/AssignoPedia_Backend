@@ -3151,6 +3151,7 @@ async function loadDashboard() {
 
   // Check if user should see word count sections
   const showWordCount = isRegularEmployee; // Only regular employees see word count
+  const isTeamLeader = employee.role === "team_leader";
 
   mainContent.innerHTML = `
       <div class="my-dashboard-modern dashboard-main-section" id="dashboardMainSection">
@@ -3181,6 +3182,7 @@ async function loadDashboard() {
           </div>
         </div>
         ` : ''}
+            <div id="teamLeaderWordCountSection"></div>
         <div class="my-dashboard-calendar-section">
           <div class="my-dashboard-calendar-title">Attendance & Leaves Calendar</div>
           <div class="my-dashboard-two-calendars">
@@ -3196,6 +3198,18 @@ async function loadDashboard() {
         </div>
       </div>
     `;
+    if (employee.role === "team_leader") {
+      if (!document.getElementById("teamLeaderWordCountSection")) {
+        const section = document.createElement("div");
+        section.id = "teamLeaderWordCountSection";
+        const dashboardMain = document.getElementById("dashboardMainSection");
+        dashboardMain.appendChild(section);
+      }
+      loadTeamLeaderDashboard();
+    }
+        
+
+    
   // --- Scoped CSS ---
   if (!document.getElementById("myDashboardModernStyle")) {
     const style = document.createElement("style");
@@ -3370,6 +3384,21 @@ async function loadDashboard() {
       if (monthWordCountCard && monthWordCountCard.querySelector(".count"))
         monthWordCountCard.querySelector(".count").textContent = monthTotal;
     }
+     // --- Team Leader Extra Section ---
+    if (isTeamLeader) {
+      // Ensure myTeam is loaded
+      if (!myTeam) {
+        const token = localStorage.getItem("jwtToken");
+        try {
+          const res = await fetch("/api/my-team", { headers: { Authorization: `Bearer ${token}` } });
+          const data = await res.json();
+          if (data.success && data.team) myTeam = data.team;
+        } catch (e) { myTeam = null; }
+      }
+      if (myTeam && myTeam.team_members_details) {
+        showTeamPerformanceBarChart(myTeam.team_members_details, null, month, year);
+      }
+    }
   }
   // --- Calendar rendering ---
   function renderAttendanceCalendar(containerId, days) {
@@ -3421,6 +3450,189 @@ async function loadDashboard() {
   setLogoutListener();
   injectProfileSidebar();
   loadRecentNotices();
+}
+
+// --- Team Leader Word Count Section ---
+
+let myTeam = null; // <-- Make myTeam global to this module
+let selectedMonth = (new Date()).getMonth() + 1;
+let selectedYear = (new Date()).getFullYear();
+
+async function loadTeamLeaderDashboard() {
+  const employee = JSON.parse(localStorage.getItem("employee"));
+  const token = localStorage.getItem("jwtToken");
+  if (employee.role !== "team_leader") return;
+
+  // Fetch team info
+  myTeam = null;
+  try {
+    const res = await fetch("/api/my-team", { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    if (data.success && data.team) myTeam = data.team;
+  } catch (e) { myTeam = null; }
+
+  if (!myTeam || !myTeam.team_members_details || !myTeam.team_members_details.length) {
+    document.getElementById("teamLeaderWordCountSection").innerHTML = `<div style='margin:2rem 0;color:#888;text-align:center;'>No team or team members found for you.</div>`;
+    return;
+  }
+
+  // Build member select dropdown
+  const members = myTeam.team_members_details;
+  let selectHtml = `<label style="color: #3a2c5c;;" for="teamMemberSelect">Select Team Member:</label>
+    <select id="teamMemberSelect" style="margin-top:10px;">${members.map(m => `<option value="${m.employeeId}">${m.firstName || m.name || m.employeeId}</option>`).join('')}</select>
+    <div id="teamMemberWordCounts"></div>
+    <div id="teamPerformanceChartContainer" style="margin-top:2rem;"></div>
+  `;
+  document.getElementById("teamLeaderWordCountSection").innerHTML = selectHtml;
+
+  // Handler for member selection
+  document.getElementById("teamMemberSelect").addEventListener("change", async function() {
+    await showTeamMemberWordCounts(this.value, selectedMonth, selectedYear);
+    showTeamPerformanceBarChart(members, this.value, selectedMonth, selectedYear);
+  });
+
+  // Show for first member by default
+  await showTeamMemberWordCounts(members[0].employeeId, selectedMonth, selectedYear);
+
+  // Show performance chart for all members
+  showTeamPerformanceBarChart(members, null, selectedMonth, selectedYear);
+}
+
+async function showTeamMemberWordCounts(employeeId, month, year) {
+  const pad = n => (n < 10 ? "0" + n : n);
+  // Fetch all word counts for the month
+  const wordCounts = await fetchWordCounts(employeeId, pad(month), year);
+  // Today's word count
+  const now = new Date();
+  const todayStr = new Date(now.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const todayEntry = wordCounts.find(wc => {
+    const d = new Date(wc.date);
+    const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+    return ist.toISOString().slice(0, 10) === todayStr;
+  });
+  const todayWordCount = todayEntry ? todayEntry.wordCount : 0;
+  // Month total
+  const monthTotal = wordCounts.reduce((sum, wc) => sum + (wc.wordCount || 0), 0);
+  document.getElementById("teamMemberWordCounts").innerHTML = `
+    <div style="margin:1rem 0;">
+      <strong>Today's Word Count:</strong> ${todayWordCount}<br>
+      <strong>Month Total Word Count:</strong> ${monthTotal}
+    </div>
+  `;
+}
+
+// --- Team Leader Performance Tracker Chart (Dynamic) ---
+let teamPerformanceChartInstance = null;
+async function showTeamPerformanceBarChart(teamMembers, selectedMemberId, month, year) {
+  const chartContainer = document.getElementById("teamPerformanceChartContainer");
+  chartContainer.innerHTML = '<div style="display:flex;justify-content:center;"><canvas id="teamPerformanceChart" style="max-width:900px;width:100%;"></canvas></div>';
+  const ctx = document.getElementById("teamPerformanceChart").getContext("2d");
+  let chartData, chartLabels, chartTitle, chartType, chartOptions;
+
+  if (!selectedMemberId) {
+    // --- BAR CHART for team comparison ---
+    chartType = "bar";
+    chartTitle = "Team Members' Total Word Count (Current Month)";
+    chartLabels = teamMembers.map(m => m.firstName || m.name || m.employeeId);
+    const wordCounts = await Promise.all(
+      teamMembers.map(async m => {
+        const res = await fetch(`/api/word-count?employeeId=${m.employeeId}&month=${month}&year=${year}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("jwtToken")}` }
+        });
+        const data = await res.json();
+        return data.success
+          ? (data.wordCounts || []).reduce((sum, w) => sum + (w.wordCount || 0), 0)
+          : 0;
+      })
+    );
+    chartData = {
+      labels: chartLabels,
+      datasets: [{
+        label: "Total Word Count",
+        data: wordCounts,
+        backgroundColor: "#7b5fff",
+        borderRadius: 6, // rounded bars
+        barThickness:50, // thin bars
+        maxBarThickness:74,
+      }]
+    };
+    chartOptions = {
+      responsive: true,
+      maintainAspectRatio: true,
+      aspectRatio: 2.5,
+      plugins: {
+        title: {
+          display: true,
+          text: chartTitle,
+          font: { size:12}
+        },
+        legend: { display: false }
+      },
+      scales: {
+        x: {
+          grid: { display: false }
+        },
+        y: { beginAtZero: true }
+      }
+    };
+  } else {
+    // --- LINE CHART for single member daily trend ---
+    chartType = "line";
+    const member = teamMembers.find(m => m.employeeId === selectedMemberId);
+    chartTitle = `${member.firstName || member.name || member.employeeId}'s Daily Word Count (Current Month)`;
+    const res = await fetch(`/api/word-count?employeeId=${selectedMemberId}&month=${month}&year=${year}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("jwtToken")}` }
+    });
+    const data = await res.json();
+    const daysInMonth = new Date(year, month, 0).getDate();
+    chartLabels = Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
+    const wordCountsByDay = Array(daysInMonth).fill(0);
+    if (data.success && data.wordCounts) {
+      data.wordCounts.forEach(wc => {
+        const day = new Date(wc.date).getDate();
+        wordCountsByDay[day - 1] = wc.wordCount;
+      });
+    }
+    chartData = {
+      labels: chartLabels,
+      datasets: [{
+        label: "Word Count",
+        data: wordCountsByDay,
+        borderColor: "#7b5fff",
+        backgroundColor: "rgba(123,95,255,0.15)",
+        fill: true,
+        tension: 0.3,
+        pointRadius: 4,
+      }]
+    };
+    chartOptions = {
+      responsive: true,
+      maintainAspectRatio: true,
+      aspectRatio: 2.5,
+      plugins: {
+        title: {
+          display: true,
+          text: chartTitle,
+          font: { size: 12 }
+        },
+        legend: { display: false }
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true }
+      }
+    };
+  }
+
+  // Destroy previous chart if exists
+  if (teamPerformanceChartInstance) {
+    teamPerformanceChartInstance.destroy();
+  }
+  teamPerformanceChartInstance = new Chart(ctx, {
+    type: chartType,
+    data: chartData,
+    options: chartOptions
+  });
 }
 
 // Add WFH Request Section
@@ -5431,6 +5643,7 @@ window.toggleBreakdown = function (btn) {
 };
 
 // --- Fetch and display recent notices from backend ---
+// --- Fetch and display recent notices from backend ---
 async function loadRecentNotices() {
   const recentNoticesList = document.getElementById("recentNoticesList");
   if (!recentNoticesList) return;
@@ -5459,35 +5672,44 @@ async function loadRecentNotices() {
         let downloadBtn = '';
         if (notice.payslipInfo && notice.payslipInfo.employeeId && notice.payslipInfo.month && notice.payslipInfo.year) {
           const { employeeId, month, year } = notice.payslipInfo;
-          downloadBtn = `<a href="/api/download-payslip?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}" target="_blank" style="display:inline-block;margin-top:8px;padding:7px 18px;background:linear-gradient(90deg,#764ba2,#43cea2);color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:0.98em;">Download Pay Slip</a>`;
+          downloadBtn = `<button data-employee-id="${encodeURIComponent(employeeId)}" data-month="${encodeURIComponent(month)}" data-year="${encodeURIComponent(year)}" style="display:inline-block;margin-top:8px;padding:7px 18px;background:linear-gradient(90deg,#764ba2,#43cea2);color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:0.98em;border:none;cursor:pointer;">Download Pay Slip</button>`;
         } else if (notice.message && notice.message.toLowerCase().includes('pay slip')) {
-          // Fallback: Use current employee and latest month/year (customize as needed)
           const today = new Date();
           const employeeId = currentEmployee.employeeId;
           const month = (today.getMonth() + 1).toString().padStart(2, '0');
           const year = today.getFullYear();
-          downloadBtn = `<a href="/api/download-payslip?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}" target="_blank" style="display:inline-block;margin-top:8px;padding:7px 18px;background:linear-gradient(90deg,#764ba2,#43cea2);color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:0.98em;">Download Pay Slip</a>`;
+          downloadBtn = `<button data-employee-id="${encodeURIComponent(employeeId)}" data-month="${encodeURIComponent(month)}" data-year="${encodeURIComponent(year)}" style="display:inline-block;margin-top:8px;padding:7px 18px;background:linear-gradient(90deg,#764ba2,#43cea2);color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:0.98em;border:none;cursor:pointer;">Download Pay Slip</button>`;
         }
         return `
-        <div class="notice-item ${!notice.readBy.includes(currentEmployee.employeeId) ? "unread" : ""}" data-notice-id="${notice._id}">
-          <div class="notice-header">
-            <span class="notice-sender">
-              <i class="fas fa-user"></i>
-              ${notice.senderName}
-            </span>
-            <span class="notice-date">${new Date(notice.createdAt).toLocaleString()}</span>
+          <div class="notice-item ${!notice.readBy.includes(currentEmployee.employeeId) ? "unread" : ""}" data-notice-id="${notice._id}">
+            <div class="notice-header">
+              <span class="notice-sender">
+                <i class="fas fa-user"></i>
+                ${notice.senderName}
+              </span>
+              <span class="notice-date">${new Date(notice.createdAt).toLocaleString()}</span>
+            </div>
+            <div class="notice-message">${notice.message}</div>
+            ${extraDetails}
+            ${downloadBtn}
+            <div class="notice-badge">
+              ${notice.isForAll ? "All Employees" : `To: ${notice.recipientId}`}
+            </div>
           </div>
-          <div class="notice-message">${notice.message}</div>
-          ${extraDetails}
-          ${downloadBtn}
-          <div class="notice-badge">
-            ${notice.isForAll ? "All Employees" : `To: ${notice.recipientId}`}
-          </div>
-        </div>
-      `;
+        `;
       })
       .join("");
     recentNoticesList.innerHTML = noticesHtml;
+
+    // Add download button click handler
+    document.querySelectorAll('button[data-employee-id]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const employeeId = button.getAttribute('data-employee-id');
+        const month = button.getAttribute('data-month');
+        const year = button.getAttribute('data-year');
+        await downloadPayslip(employeeId, month, year);
+      });
+    });
   } catch (err) {
     recentNoticesList.innerHTML = '<div class="no-notices">Error loading notices</div>';
   }
@@ -5521,14 +5743,13 @@ async function loadNotificationsList() {
         let downloadBtn = '';
         if (notice.payslipInfo && notice.payslipInfo.employeeId && notice.payslipInfo.month && notice.payslipInfo.year) {
           const { employeeId, month, year } = notice.payslipInfo;
-          downloadBtn = `<a href="/api/download-payslip?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}" target="_blank" style="display:inline-block;margin-top:8px;padding:7px 18px;background:linear-gradient(90deg,#764ba2,#43cea2);color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:0.98em;">Download Pay Slip</a>`;
+          downloadBtn = `<button data-employee-id="${encodeURIComponent(employeeId)}" data-month="${encodeURIComponent(month)}" data-year="${encodeURIComponent(year)}" style="display:inline-block;margin-top:8px;padding:7px 18px;background:linear-gradient(90deg,#764ba2,#43cea2);color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:0.98em;border:none;cursor:pointer;">Download Pay Slip</button>`;
         } else if (notice.message && notice.message.toLowerCase().includes('pay slip')) {
-          // Fallback: Use current employee and latest month/year (customize as needed)
           const today = new Date();
           const employeeId = currentEmployee.employeeId;
           const month = (today.getMonth() + 1).toString().padStart(2, '0');
           const year = today.getFullYear();
-          downloadBtn = `<a href="/api/download-payslip?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}" target="_blank" style="display:inline-block;margin-top:8px;padding:7px 18px;background:linear-gradient(90deg,#764ba2,#43cea2);color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:0.98em;">Download Pay Slip</a>`;
+          downloadBtn = `<button data-employee-id="${encodeURIComponent(employeeId)}" data-month="${encodeURIComponent(month)}" data-year="${encodeURIComponent(year)}" style="display:inline-block;margin-top:8px;padding:7px 18px;background:linear-gradient(90deg,#764ba2,#43cea2);color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:0.98em;border:none;cursor:pointer;">Download Pay Slip</button>`;
         }
         return `
           <div class="notice-item ${isUnread ? "unread" : ""}" data-notice-id="${notice._id}">
@@ -5550,6 +5771,17 @@ async function loadNotificationsList() {
       })
       .join("");
     notificationsList.innerHTML = notificationsHtml;
+
+    // Add download button click handler
+    document.querySelectorAll('button[data-employee-id]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const employeeId = button.getAttribute('data-employee-id');
+        const month = button.getAttribute('data-month');
+        const year = button.getAttribute('data-year');
+        await downloadPayslip(employeeId, month, year);
+      });
+    });
+
     // Add click handlers to mark as read
     document.querySelectorAll(".notice-item").forEach((item) => {
       item.addEventListener("click", async function () {
@@ -5558,10 +5790,39 @@ async function loadNotificationsList() {
         this.classList.remove("unread");
       });
     });
+
     // Update notification badge
     updateNotificationBadge(data.notifications);
   } catch (err) {
     notificationsList.innerHTML = '<div class="no-notifications">Error loading notifications</div>';
+  }
+}
+
+// --- Helper function to handle payslip download ---
+async function downloadPayslip(employeeId, month, year) {
+  const token = localStorage.getItem("jwtToken");
+  try {
+    const response = await fetch(`/api/download-payslip?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) throw new Error('Download failed');
+
+    const blob = await response.blob();
+    console.log(blob);
+    const url = window.URL.createObjectURL(blob);
+    console.log(url);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Payslip-${employeeId}-${month}-${year}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Error downloading PDF:', error);
+    alert('Failed to download the payslip. Please try again.');
   }
 }
 
