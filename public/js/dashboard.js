@@ -3559,7 +3559,7 @@ async function showTeamPerformanceBarChart(teamMembers, selectedMemberId, month,
     chartOptions = {
       responsive: true,
       maintainAspectRatio: true,
-      aspectRatio: 3.5,
+      aspectRatio: 3,
       plugins: {
         title: {
           display: true,
@@ -3608,7 +3608,7 @@ async function showTeamPerformanceBarChart(teamMembers, selectedMemberId, month,
     chartOptions = {
       responsive: true,
       maintainAspectRatio: true,
-      aspectRatio: 3.5,
+      aspectRatio: 2,
       plugins: {
         title: {
           display: true,
