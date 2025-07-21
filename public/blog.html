@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog - Assignopedia Services</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/css/index.css">
+    <link rel="stylesheet" href="/css/mobile.css">
+    <link rel="icon" type="image/png" href="/images/logo.png" />
+    <style>
+        /* Blog specific styles */
+        .blog-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        .blog-header {
+            text-align: center;
+            margin-bottom: 50px;
+            padding: 60px 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .blog-header h1 {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            color: white;
+        }
+
+        .blog-header p {
+            font-size: 1.1em;
+            color: rgba(255,255,255,0.9);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .blog-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .blog-card {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .blog-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+
+        .blog-image {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+        }
+
+        .blog-content {
+            padding: 20px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .blog-category {
+            color: #007bff;
+            font-size: 0.9em;
+            font-weight: 500;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .blog-title {
+            font-size: 1.25em;
+            color: #1a1a2e;
+            margin-bottom: 15px;
+            font-weight: 600;
+            line-height: 1.4;
+        }
+
+        .blog-excerpt {
+            color: #666;
+            font-size: 0.95em;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            flex-grow: 1;
+        }
+
+        .blog-meta {
+            font-size: 0.9em;
+            color: #888;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: auto;
+        }
+
+        .blog-author {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .author-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .blog-date {
+            color: #888;
+        }
+
+        .read-more {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: #007bff;
+            text-decoration: none;
+            font-weight: 500;
+            margin-top: 15px;
+            transition: color 0.3s ease;
+        }
+
+        .read-more:hover {
+            color: #0056b3;
+        }
+
+        .read-more i {
+            font-size: 0.8em;
+            transition: transform 0.3s ease;
+        }
+
+        .read-more:hover i {
+            transform: translateX(3px);
+        }
+
+        /* Blog filters */
+        .blog-filters {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 8px 20px;
+            border: none;
+            background: white;
+            color: #1a1a2e;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .filter-btn:hover,
+        .filter-btn.active {
+            background: #007bff;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,123,255,0.2);
+        }
+
+        /* Search bar */
+        .blog-search {
+            max-width: 600px;
+            margin: 0 auto 40px;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 15px 20px;
+            padding-left: 45px;
+            border: none;
+            border-radius: 30px;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            font-size: 1em;
+            transition: box-shadow 0.3s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #666;
+        }
+
+        /* Responsive design */
+        @media (max-width: 1024px) {
+            .blog-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .blog-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .blog-header {
+                padding: 40px 20px;
+            }
+
+            .blog-header h1 {
+                font-size: 2em;
+            }
+        }
+
+        /* Loading animation */
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 50px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* No results message */
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 1.1em;
+        }
+    </style>
+</head>
+<body>
+    <!-- Scroll to Top Button -->
+    <div class="scroll-top" id="scrollTop">
+        <i class="fas fa-arrow-up"></i>
+    </div>
+
+    <!-- Header -->
+    <header>
+        <nav class="container">
+            <div class="logo-container">
+                <img src="/images/logo.png" alt="Assignopedia Logo" class="logo-svg">
+                <div class="logo-text-container">
+                    <a href="index.html" class="logo-link">
+                        <span class="logo-text">Assignopedia</span>
+                    </a>
+                </div>
+            </div>
+            
+            <ul class="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="services.html">Services</a></li>
+                <li><a href="about.html">About</a></li>
+                <li><a href="careers.html">Careers</a></li>
+                <li><a href="contact.html">Contact</a></li>
+                <li><a href="blog.html" class="active">Blog</a></li>
+            </ul>
+            
+            <button class="mobile-menu-btn" id="mobileMenuBtn">
+                <i class="fas fa-bars"></i>
+            </button>
+            
+            <a href="login.html" class="cta-btn">Login</a>
+            
+            <!-- Mobile Navigation -->
+            <div class="mobile-nav" id="mobileNav">
+                <ul>
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="services.html">Services</a></li>
+                    <li><a href="about.html">About</a></li>
+                    <li><a href="careers.html">Careers</a></li>
+                    <li><a href="contact.html">Contact</a></li>
+                    <li><a href="blog.html" class="active">Blog</a></li>
+                </ul>
+                <div class="mobile-cta">
+                    <a href="login.html" class="cta-btn">Login</a>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Blog Section -->
+    <main>
+        <div class="blog-container">
+            <!-- Blog Header -->
+            <div class="blog-header">
+                <h1>Assignopedia Blog</h1>
+                <p>Explore our latest insights, tips, and updates on academic writing, content creation, and industry trends.</p>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="blog-search">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" class="search-input" placeholder="Search blog posts..." id="searchInput">
+            </div>
+
+            <!-- Blog Filters -->
+            <div class="blog-filters" id="blogFilters">
+                <button class="filter-btn active" data-category="all">All Posts</button>
+                <button class="filter-btn" data-category="Academic">Academic</button>
+                <button class="filter-btn" data-category="Research">Research</button>
+                <button class="filter-btn" data-category="Writing">Writing</button>
+                <button class="filter-btn" data-category="Tips">Study Tips</button>
+            </div>
+
+            <!-- Blog Grid -->
+            <div class="blog-grid" id="blogGrid">
+                <!-- Blog posts will be dynamically inserted here -->
+                <div class="loading-spinner"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer id="contact">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section fade-in">
+                    <h3><i class="fas fa-map-marker-alt"></i> Contact Information</h3>
+                    <p><strong>Office Address:</strong><br>
+                    Assignopedia Services<br>
+                    Kolkata, West Bengal, India</p>
+                    <p><strong><i class="fas fa-phone"></i> Phone/WhatsApp:</strong><br>
+                    <a href="tel:+916291075245">+91 6291075245</a></p>
+                    <p><strong><i class="fas fa-clock"></i> Business Hours:</strong><br>
+                    Monday - Saturday: 11:00 AM – 07:00 PM<br>
+                    Sunday: Closed</p>
+                </div>
+
+                <div class="footer-section fade-in">
+                    <h3><i class="fas fa-envelope"></i> Get in Touch</h3>
+                    <p><strong>Client Queries & Projects:</strong><br>
+                    <a href="mailto:assignopedia2.0@gmail.com">assignopedia2.0@gmail.com</a></p>
+                    <p><strong>Career Opportunities:</strong><br>
+                    <a href="mailto:hrrecruiter.aop@gmail.com">hrrecruiter.aop@gmail.com</a></p>
+                    <p><strong>Response Time:</strong><br>
+                    Within 2 hours during business hours</p>
+                    <div class="social-links">
+                        <h3><i class="fas fa-share-alt"></i> Connect With Us</h3>
+                        <a href="https://www.facebook.com/profile.php?id=100088741681767&mibextid=rS40aB7S9Ucbxw6v" target="_blank" class="social-icon"><i class="fab fa-facebook"></i></a>
+                        <a href="" target="_blank" class="social-icon"><i class="fab fa-instagram"></i></a>
+                        <a href="https://www.linkedin.com/company/assignopedia-services/" target="_blank" class="social-icon"><i class="fab fa-linkedin"></i></a>
+                    </div>
+                </div>
+
+                <div class="footer-section fade-in">
+                    <h3><i class="fas fa-link"></i> Quick Navigation</h3>
+                    <ul>
+                        <li><a href="services.html"><i class="fas fa-cogs"></i> Our Services</a></li>
+                        <li><a href="about.html"><i class="fas fa-info-circle"></i> About Us</a></li>
+                        <li><a href="careers.html"><i class="fas fa-users"></i> Careers</a></li>
+                        <li><a href="contact.html"><i class="fas fa-phone"></i> Contact</a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="footer-bottom">
+                <p>&copy; 2024 Assignopedia Services. All rights reserved. | Empowering Academic & Creative Success — One Word at a Time</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="/js/mobile.js"></script>
+    <script>
+        // Blog post data
+        const blogPosts = [
+            {
+                id: 1,
+                title: "The Future of Academic Writing in the Digital Age",
+                excerpt: "Explore how technology and AI are transforming academic writing and research methodologies in higher education.",
+                image: "https://source.unsplash.com/random/800x600/?education",
+                author: {
+                    name: "Dr. Sarah Johnson",
+                    avatar: "https://source.unsplash.com/random/100x100/?portrait"
+                },
+                date: "March 15, 2024",
+                category: "Academic",
+                slug: "future-academic-writing-digital-age"
+            },
+            {
+                id: 2,
+                title: "Essential Tips for Writing a Stellar Research Paper",
+                excerpt: "Learn the key strategies and best practices for crafting compelling research papers that stand out.",
+                image: "https://source.unsplash.com/random/800x600/?research",
+                author: {
+                    name: "Prof. Michael Chen",
+                    avatar: "https://source.unsplash.com/random/100x100/?man"
+                },
+                date: "March 12, 2024",
+                category: "Research",
+                slug: "essential-tips-research-paper"
+            },
+            {
+                id: 3,
+                title: "Understanding Citation Styles: APA vs MLA vs Chicago",
+                excerpt: "A comprehensive guide to different citation styles and when to use them in your academic writing.",
+                image: "https://source.unsplash.com/random/800x600/?library",
+                author: {
+                    name: "Emma Williams",
+                    avatar: "https://source.unsplash.com/random/100x100/?woman"
+                },
+                date: "March 10, 2024",
+                category: "Writing",
+                slug: "understanding-citation-styles"
+            },
+            {
+                id: 4,
+                title: "Time Management Tips for Academic Success",
+                excerpt: "Discover effective strategies to balance your academic workload and achieve better results.",
+                image: "https://source.unsplash.com/random/800x600/?time",
+                author: {
+                    name: "Lisa Thompson",
+                    avatar: "https://source.unsplash.com/random/100x100/?girl"
+                },
+                date: "March 8, 2024",
+                category: "Tips",
+                slug: "time-management-academic-success"
+            },
+            {
+                id: 5,
+                title: "How to Write an Effective Literature Review",
+                excerpt: "Master the art of writing literature reviews that synthesize research and provide valuable insights.",
+                image: "https://source.unsplash.com/random/800x600/?books",
+                author: {
+                    name: "Dr. Robert Martinez",
+                    avatar: "https://source.unsplash.com/random/100x100/?professor"
+                },
+                date: "March 5, 2024",
+                category: "Research",
+                slug: "effective-literature-review"
+            },
+            {
+                id: 6,
+                title: "The Impact of AI on Content Writing",
+                excerpt: "Exploring how artificial intelligence is revolutionizing content creation and writing processes.",
+                image: "https://source.unsplash.com/random/800x600/?technology",
+                author: {
+                    name: "James Wilson",
+                    avatar: "https://source.unsplash.com/random/100x100/?developer"
+                },
+                date: "March 1, 2024",
+                category: "Writing",
+                slug: "ai-impact-content-writing"
+            }
+        ];
+
+        // Function to create a blog card
+        function createBlogCard(post) {
+            return `
+                <div class="blog-card" data-category="${post.category}">
+                    <img src="${post.image}" alt="${post.title}" class="blog-image">
+                    <div class="blog-content">
+                        <div class="blog-category">${post.category}</div>
+                        <h3 class="blog-title">${post.title}</h3>
+                        <p class="blog-excerpt">${post.excerpt}</p>
+                        <div class="blog-meta">
+                            <div class="blog-author">
+                                <img src="${post.author.avatar}" alt="${post.author.name}" class="author-avatar">
+                                <span>${post.author.name}</span>
+                            </div>
+                            <div class="blog-date">${post.date}</div>
+                        </div>
+                        <a href="/blog/${post.slug}" class="read-more">
+                            Read More <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Function to render blog posts
+        function renderBlogPosts(posts = blogPosts) {
+            const blogGrid = document.getElementById('blogGrid');
+            if (posts.length === 0) {
+                blogGrid.innerHTML = '<div class="no-results">No blog posts found matching your criteria.</div>';
+                return;
+            }
+            blogGrid.innerHTML = posts.map(post => createBlogCard(post)).join('');
+        }
+
+        // Filter functionality
+        document.getElementById('blogFilters').addEventListener('click', (e) => {
+            if (e.target.classList.contains('filter-btn')) {
+                // Update active state
+                document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+                e.target.classList.add('active');
+
+                // Filter posts
+                const category = e.target.dataset.category;
+                const filteredPosts = category === 'all' 
+                    ? blogPosts 
+                    : blogPosts.filter(post => post.category === category);
+                renderBlogPosts(filteredPosts);
+            }
+        });
+
+        // Search functionality
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const filteredPosts = blogPosts.filter(post => 
+                post.title.toLowerCase().includes(searchTerm) ||
+                post.excerpt.toLowerCase().includes(searchTerm) ||
+                post.author.name.toLowerCase().includes(searchTerm) ||
+                post.category.toLowerCase().includes(searchTerm)
+            );
+            renderBlogPosts(filteredPosts);
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            renderBlogPosts();
+        });
+    </script>
+</body>
+</html> 

@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog - Assignopedia Services</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/css/index.css">
+    <link rel="stylesheet" href="/css/mobile.css">
+    <link rel="icon" type="image/png" href="/images/logo.png" />
+    <style>
+        /* Custom styles for blog cards */
+        .blog-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            height: 100%;
+            border: none;
+            border-radius: 15px;
+            overflow: hidden;
+            background: white;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .blog-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+
+        .blog-card .card-img-top {
+            height: 200px;
+            object-fit: cover;
+        }
+
+        .blog-card .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #1a1a2e;
+        }
+
+        .blog-card .card-text {
+            color: #666;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .blog-meta {
+            font-size: 0.9rem;
+            color: #888;
+        }
+
+        .blog-author {
+            color: #007bff;
+            font-weight: 500;
+        }
+
+        .read-more {
+            color: #007bff;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .read-more:hover {
+            color: #0056b3;
+        }
+
+        .blog-section {
+            padding: 80px 0;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+
+        .section-title {
+            text-align: center;
+            margin-bottom: 50px;
+            color: #1a1a2e;
+        }
+
+        .section-title h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .section-title p {
+            color: #666;
+            font-size: 1.1rem;
+        }
+
+        /* Loading animation */
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 50px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Scroll to Top Button -->
+    <div class="scroll-top" id="scrollTop">
+        <i class="fas fa-arrow-up"></i>
+    </div>
+
+    <!-- Header -->
+    <header>
+        <nav class="container">
+            <div class="logo-container">
+                <img src="/images/logo.png" alt="Assignopedia Logo" class="logo-svg">
+                <div class="logo-text-container">
+                    <a href="index.html" class="logo-link">
+                        <span class="logo-text">Assignopedia</span>
+                    </a>
+                </div>
+            </div>
+            
+            <ul class="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="services.html">Services</a></li>
+                <li><a href="about.html">About</a></li>
+                <li><a href="careers.html">Careers</a></li>
+                <li><a href="contact.html">Contact</a></li>
+                <li><a href="blog.html" class="active">Blog</a></li>
+            </ul>
+            
+            <button class="mobile-menu-btn" id="mobileMenuBtn">
+                <i class="fas fa-bars"></i>
+            </button>
+            
+            <a href="login.html" class="cta-btn">Login</a>
+            
+            <!-- Mobile Navigation -->
+            <div class="mobile-nav" id="mobileNav">
+                <ul>
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="services.html">Services</a></li>
+                    <li><a href="about.html">About</a></li>
+                    <li><a href="careers.html">Careers</a></li>
+                    <li><a href="contact.html">Contact</a></li>
+                    <li><a href="blog.html" class="active">Blog</a></li>
+                </ul>
+                <div class="mobile-cta">
+                    <a href="login.html" class="cta-btn">Login</a>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Blog Section -->
+    <section class="blog-section">
+        <div class="container">
+            <div class="section-title">
+                <h1>Latest Blog Posts</h1>
+                <p>Stay updated with our latest insights, tips, and industry news</p>
+            </div>
+            
+            <!-- Blog Grid Container -->
+            <div class="row g-4" id="blogGrid">
+                <!-- Blog posts will be dynamically inserted here -->
+                <div class="loading-spinner"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer id="contact">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section fade-in">
+                    <h3><i class="fas fa-map-marker-alt"></i> Contact Information</h3>
+                    <p><strong>Office Address:</strong><br>
+                    Assignopedia Services<br>
+                    Kolkata, West Bengal, India</p>
+                    <p><strong><i class="fas fa-phone"></i> Phone/WhatsApp:</strong><br>
+                    <a href="tel:+916291075245">+91 6291075245</a></p>
+                    <p><strong><i class="fas fa-clock"></i> Business Hours:</strong><br>
+                    Monday - Saturday: 11:00 AM – 07:00 PM<br>
+                    Sunday: Closed</p>
+                </div>
+
+                <div class="footer-section fade-in">
+                    <h3><i class="fas fa-envelope"></i> Get in Touch</h3>
+                    <p><strong>Client Queries & Projects:</strong><br>
+                    <a href="mailto:assignopedia2.0@gmail.com">assignopedia2.0@gmail.com</a></p>
+                    <p><strong>Career Opportunities:</strong><br>
+                    <a href="mailto:hrrecruiter.aop@gmail.com">hrrecruiter.aop@gmail.com</a></p>
+                    <p><strong>Response Time:</strong><br>
+                    Within 2 hours during business hours</p>
+                    <div class="social-links">
+                        <h3><i class="fas fa-share-alt"></i> Connect With Us</h3>
+                        <a href="https://www.facebook.com/profile.php?id=100088741681767&mibextid=rS40aB7S9Ucbxw6v" target="_blank" class="social-icon"><i class="fab fa-facebook"></i></a>
+                        <a href="https://www.instagram.com/assignopedia" target="_blank" class="social-icon"><i class="fab fa-instagram"></i></a>
+                        <a href="https://www.linkedin.com/company/assignopedia-services/" target="_blank" class="social-icon"><i class="fab fa-linkedin"></i></a>
+                    </div>
+                </div>
+
+                <div class="footer-section fade-in">
+                    <h3><i class="fas fa-link"></i> Quick Navigation</h3>
+                    <ul>
+                        <li><a href="services.html"><i class="fas fa-cogs"></i> Our Services</a></li>
+                        <li><a href="about.html"><i class="fas fa-info-circle"></i> About Us</a></li>
+                        <li><a href="careers.html"><i class="fas fa-users"></i> Careers</a></li>
+                        <li><a href="contact.html"><i class="fas fa-phone"></i> Contact</a></li>
+                    </ul>
+                    <p><strong>Why Students Choose Us:</strong></p>
+                    <ul>
+                        <li><i class="fas fa-star"></i> 98% Client Satisfaction</li>
+                        <li><i class="fas fa-award"></i> Award-Winning Quality</li>
+                        <li><i class="fas fa-thumbs-up"></i> 5000+ Happy Clients</li>
+                        <li><i class="fas fa-medal"></i> Industry Recognition</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="footer-bottom">
+                <p>&copy; 2024 Assignopedia Services. All rights reserved. | Empowering Academic & Creative Success — One Word at a Time</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/js/mobile.js"></script>
+    <script src="/js/blog-posts.js"></script>
+</body>
+</html> 
